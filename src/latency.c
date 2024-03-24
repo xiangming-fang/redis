@@ -34,7 +34,6 @@
  */
 
 #include "server.h"
-#include "hdr_histogram.h"
 
 /* Dictionary type for latency events. */
 int dictStringKeyCompare(dict *d, const void *key1, const void *key2) {
@@ -279,7 +278,7 @@ sds createLatencyReport(void) {
 
         /* Potentially commands. */
         if (!strcasecmp(event,"command")) {
-            if (server.slowlog_log_slower_than < 0 || server.slowlog_max_len == 0) {
+            if (server.slowlog_log_slower_than < 0) {
                 advise_slowlog_enabled = 1;
                 advices++;
             } else if (server.slowlog_log_slower_than/1000 >
@@ -726,14 +725,3 @@ nodataerr:
         "No samples available for event '%s'", (char*) c->argv[2]->ptr);
 }
 
-void durationAddSample(int type, monotime duration) {
-    if (type >= EL_DURATION_TYPE_NUM) {
-        return;
-    }
-    durationStats* ds = &server.duration_stats[type];
-    ds->cnt++;
-    ds->sum += duration;
-    if (duration > ds->max) {
-        ds->max = duration;
-    }
-}

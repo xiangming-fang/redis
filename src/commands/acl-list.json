@@ -1,6 +1,6 @@
 {
     "LIST": {
-        "summary": "Dumps the effective rules in ACL file format.",
+        "summary": "List the current ACL rules in ACL config file format",
         "complexity": "O(N). Where N is the number of configured users.",
         "group": "server",
         "since": "6.0.0",
@@ -13,13 +13,6 @@
             "LOADING",
             "STALE",
             "SENTINEL"
-        ],
-        "reply_schema": {
-            "type": "array",
-            "description": "A list of currently active ACL rules",
-            "items": {
-                "type": "string"
-            }
-        }
+        ]
     }
 }

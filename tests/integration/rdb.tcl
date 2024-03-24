@@ -6,11 +6,10 @@ set server_path [tmpdir "server.rdb-encoding-test"]
 exec cp tests/assets/encodings.rdb $server_path
 exec cp tests/assets/list-quicklist.rdb $server_path
 
-start_server [list overrides [list "dir" $server_path "dbfilename" "list-quicklist.rdb" save ""]] {
+start_server [list overrides [list "dir" $server_path "dbfilename" "list-quicklist.rdb"]] {
     test "test old version rdb file" {
         r select 0
         assert_equal [r get x] 7
-        assert_encoding listpack list
         r lpop list
     } {7}
 }
@@ -173,7 +172,7 @@ start_server {} {
 }
 
 test {client freed during loading} {
-    start_server [list overrides [list key-load-delay 50 loading-process-events-interval-bytes 1024 rdbcompression no save "900 1"]] {
+    start_server [list overrides [list key-load-delay 50 loading-process-events-interval-bytes 1024 rdbcompression no]] {
         # create a big rdb that will take long to load. it is important
         # for keys to be big since the server processes events only once in 2mb.
         # 100mb of rdb, 100k keys will load in more than 5 seconds
@@ -218,7 +217,6 @@ start_server {} {
     test {Test RDB load info} {
         r debug populate 1000
         r save
-        assert {[r lastsave] <= [lindex [r time] 0]}
         restart_server 0 true false
         wait_done_loading r
         assert {[s rdb_last_load_keys_expired] == 0}
@@ -370,9 +368,6 @@ start_server [list overrides [list "dir" $server_path "dbfilename" "scriptbackup
 
 start_server {} {
     test "failed bgsave prevents writes" {
-        # Make sure the server saves an RDB on shutdown
-        r config set save "900 1"
-
         r config set rdb-key-save-delay 10000000
         populate 1000
         r set x x

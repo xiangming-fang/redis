@@ -40,8 +40,6 @@
 /* Flags used with certain functions. */
 #define ANET_NONE 0
 #define ANET_IP_ONLY (1<<0)
-#define ANET_PREFER_IPV4 (1<<1)
-#define ANET_PREFER_IPV6 (1<<2)
 
 #if defined(__sun) || defined(_AIX)
 #define AF_LOCAL AF_UNIX
@@ -50,6 +48,10 @@
 #ifdef _AIX
 #undef ip_len
 #endif
+
+/* FD to address string conversion types */
+#define FD_TO_PEER_NAME 0
+#define FD_TO_SOCK_NAME 1
 
 int anetTcpNonBlockConnect(char *err, const char *addr, int port);
 int anetTcpNonBlockBestEffortBindConnect(char *err, const char *addr, int port, const char *source_addr);
@@ -66,12 +68,11 @@ int anetEnableTcpNoDelay(char *err, int fd);
 int anetDisableTcpNoDelay(char *err, int fd);
 int anetSendTimeout(char *err, int fd, long long ms);
 int anetRecvTimeout(char *err, int fd, long long ms);
-int anetFdToString(int fd, char *ip, size_t ip_len, int *port, int remote);
+int anetFdToString(int fd, char *ip, size_t ip_len, int *port, int fd_to_str_type);
 int anetKeepAlive(char *err, int fd, int interval);
 int anetFormatAddr(char *fmt, size_t fmt_len, char *ip, int port);
+int anetFormatFdAddr(int fd, char *buf, size_t buf_len, int fd_to_str_type);
 int anetPipe(int fds[2], int read_flags, int write_flags);
 int anetSetSockMarkId(char *err, int fd, uint32_t id);
-int anetGetError(int fd);
-int anetIsFifo(char *filepath);
 
 #endif

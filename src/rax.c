@@ -32,17 +32,22 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <stdio.h>
 #include <errno.h>
 #include <math.h>
 #include "rax.h"
-#include "redisassert.h"
 
 #ifndef RAX_MALLOC_INCLUDE
 #define RAX_MALLOC_INCLUDE "rax_malloc.h"
 #endif
 
 #include RAX_MALLOC_INCLUDE
+
+/* This is a special pointer that is guaranteed to never have the same value
+ * of a radix tree node. It's used in order to report "not found" error without
+ * requiring the function to have multiple return values. */
+void *raxNotFound = (void*)"rax-not-found-pointer";
 
 /* -------------------------------- Debugging ------------------------------ */
 
@@ -149,7 +154,7 @@ static inline void raxStackFree(raxStack *ts) {
  * 'nodesize'. The padding is needed to store the child pointers to aligned
  * addresses. Note that we add 4 to the node size because the node has a four
  * bytes header. */
-#define raxPadding(nodesize) ((sizeof(void*)-(((nodesize)+4) % sizeof(void*))) & (sizeof(void*)-1))
+#define raxPadding(nodesize) ((sizeof(void*)-((nodesize+4) % sizeof(void*))) & (sizeof(void*)-1))
 
 /* Return the pointer to the last child pointer in a node. For the compressed
  * nodes this is the only child pointer. */
@@ -347,7 +352,7 @@ raxNode *raxAddChild(raxNode *n, unsigned char c, raxNode **childptr, raxNode **
      * we don't need to do anything if there was already some padding to use. In
      * that case the final destination of the pointers will be the same, however
      * in our example there was no pre-existing padding, so we added one byte
-     * plus three bytes of padding. After the next memmove() things will look
+     * plus there bytes of padding. After the next memmove() things will look
      * like that:
      *
      * [HDR*][abde][....][Aptr][Bptr][....][Dptr][Eptr]|AUXP|
@@ -907,19 +912,18 @@ int raxTryInsert(rax *rax, unsigned char *s, size_t len, void *data, void **old)
     return raxGenericInsert(rax,s,len,data,old,0);
 }
 
-/* Find a key in the rax: return 1 if the item is found, 0 otherwise.
- * If there is an item and 'value' is passed in a non-NULL pointer,
- * the value associated with the item is set at that address. */
-int raxFind(rax *rax, unsigned char *s, size_t len, void **value) {
+/* Find a key in the rax, returns raxNotFound special void pointer value
+ * if the item was not found, otherwise the value associated with the
+ * item is returned. */
+void *raxFind(rax *rax, unsigned char *s, size_t len) {
     raxNode *h;
 
     debugf("### Lookup: %.*s\n", (int)len, s);
     int splitpos = 0;
     size_t i = raxLowWalk(rax,s,len,&h,NULL,&splitpos,NULL);
     if (i != len || (h->iscompr && splitpos != 0) || !h->iskey)
-        return 0;
-    if (value != NULL) *value = raxGetData(h);
-    return 1;
+        return raxNotFound;
+    return raxGetData(h);
 }
 
 /* Return the memory address where the 'parent' node stores the specified

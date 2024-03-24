@@ -1,6 +1,6 @@
 {
     "GETBIT": {
-        "summary": "Returns a bit value by offset.",
+        "summary": "Returns the bit value at offset in the string value stored at key",
         "complexity": "O(1)",
         "group": "bitmap",
         "since": "2.2.0",
@@ -33,17 +33,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "description": "The bit value stored at offset.",
-            "oneOf": [
-                {
-                    "const": 0
-                },
-                {
-                    "const": 1
-                }
-            ]
-        },
         "arguments": [
             {
                 "name": "key",

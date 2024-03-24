@@ -33,13 +33,13 @@ typedef enum monotonic_clock_type {
  * needs to be called once, it may be called additional times without impact.
  * Returns a printable string indicating the type of clock initialized.
  * (The returned string is static and doesn't need to be freed.)  */
-const char *monotonicInit(void);
+const char *monotonicInit();
 
 /* Return a string indicating the type of monotonic clock being used. */
-const char *monotonicInfoString(void);
+const char *monotonicInfoString();
 
 /* Return the type of monotonic clock being used. */
-monotonic_clock_type monotonicGetType(void);
+monotonic_clock_type monotonicGetType();
 
 /* Functions to measure elapsed time.  Example:
  *     monotime myTimer;

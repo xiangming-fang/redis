@@ -1,6 +1,6 @@
 {
     "COUNT": {
-        "summary": "Returns a count of commands.",
+        "summary": "Get total number of Redis commands",
         "complexity": "O(1)",
         "group": "server",
         "since": "2.8.13",
@@ -14,10 +14,6 @@
         ],
         "acl_categories": [
             "CONNECTION"
-        ],
-        "reply_schema": {
-            "description": "Number of total commands in this Redis server.",
-            "type": "integer"
-        }
+        ]
     }
 }

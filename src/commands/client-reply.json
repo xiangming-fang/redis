@@ -1,6 +1,6 @@
 {
     "REPLY": {
-        "summary": "Instructs the server whether to reply to commands.",
+        "summary": "Instruct the server whether to reply to commands",
         "complexity": "O(1)",
         "group": "connection",
         "since": "3.2.0",
@@ -16,13 +16,9 @@
         "acl_categories": [
             "CONNECTION"
         ],
-        "reply_schema": {
-            "const": "OK",
-            "description": "When called with either OFF or SKIP subcommands, no reply is made. When called with ON, reply is OK."
-        },
         "arguments": [
             {
-                "name": "action",
+                "name": "on_off_skip",
                 "type": "oneof",
                 "arguments": [
                     {

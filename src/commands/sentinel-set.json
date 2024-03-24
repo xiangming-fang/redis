@@ -1,6 +1,6 @@
 {
     "SET": {
-        "summary": "Changes the configuration of a monitored Redis master.",
+        "summary": "Change the configuration of a monitored master",
         "complexity": "O(1)",
         "group": "sentinel",
         "since": "2.8.4",
@@ -12,16 +12,13 @@
             "SENTINEL",
             "ONLY_SENTINEL"
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
                 "name": "master-name",
                 "type": "string"
             },
             {
-                "name": "data",
+                "name": "option_value",
                 "type": "block",
                 "multiple": true,
                 "arguments": [

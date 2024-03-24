@@ -32,7 +32,6 @@
 #include "server.h"
 #include "pqsort.h" /* Partial qsort for SORT+LIMIT */
 #include <math.h> /* isnan() */
-#include "cluster.h"
 
 zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank);
 
@@ -236,12 +235,10 @@ void sortCommandGeneric(client *c, int readonly) {
             if (strchr(c->argv[j+1]->ptr,'*') == NULL) {
                 dontsort = 1;
             } else {
-                /* If BY is specified with a real pattern, we can't accept it in cluster mode,
-                 * unless we can make sure the keys formed by the pattern are in the same slot 
-                 * as the key to sort. */
-                if (server.cluster_enabled && patternHashSlot(sortby->ptr, sdslen(sortby->ptr)) != getKeySlot(c->argv[1]->ptr)) {
-                    addReplyError(c, "BY option of SORT denied in Cluster mode when "
-                                 "keys formed by the pattern may be in different slots.");
+                /* If BY is specified with a real pattern, we can't accept
+                 * it in cluster mode. */
+                if (server.cluster_enabled) {
+                    addReplyError(c,"BY option of SORT denied in Cluster mode.");
                     syntax_error++;
                     break;
                 }
@@ -255,12 +252,8 @@ void sortCommandGeneric(client *c, int readonly) {
             }
             j++;
         } else if (!strcasecmp(c->argv[j]->ptr,"get") && leftargs >= 1) {
-            /* If GET is specified with a real pattern, we can't accept it in cluster mode,
-             * unless we can make sure the keys formed by the pattern are in the same slot 
-             * as the key to sort. */
-            if (server.cluster_enabled && patternHashSlot(c->argv[j+1]->ptr, sdslen(c->argv[j+1]->ptr)) != getKeySlot(c->argv[1]->ptr)) {
-                addReplyError(c, "GET option of SORT denied in Cluster mode when "
-                              "keys formed by the pattern may be in different slots.");
+            if (server.cluster_enabled) {
+                addReplyError(c,"GET option of SORT denied in Cluster mode.");
                 syntax_error++;
                 break;
             }
@@ -304,7 +297,8 @@ void sortCommandGeneric(client *c, int readonly) {
     if (sortval)
         incrRefCount(sortval);
     else
-        sortval = createQuicklistObject(server.list_max_listpack_size, server.list_compress_depth);
+        sortval = createQuicklistObject();
+
 
     /* When sorting a set with no sort specified, we must sort the output
      * so the result is consistent across scripting and replication.
@@ -334,10 +328,8 @@ void sortCommandGeneric(client *c, int readonly) {
     default: vectorlen = 0; serverPanic("Bad SORT type"); /* Avoid GCC warning */
     }
 
-    /* Perform LIMIT start,count sanity checking.
-     * And avoid integer overflow by limiting inputs to object sizes. */
-    start = min(max(limit_start, 0), vectorlen);
-    limit_count = min(max(limit_count, -1), vectorlen);
+    /* Perform LIMIT start,count sanity checking. */
+    start = (limit_start < 0) ? 0 : limit_start;
     end = (limit_count < 0) ? vectorlen-1 : start+limit_count-1;
     if (start >= vectorlen) {
         start = vectorlen-1;
@@ -554,9 +546,7 @@ void sortCommandGeneric(client *c, int readonly) {
             }
         }
     } else {
-        /* We can't predict the size and encoding of the stored list, we
-         * assume it's a large list and then convert it at the end if needed. */
-        robj *sobj = createQuicklistObject(server.list_max_listpack_size, server.list_compress_depth);
+        robj *sobj = createQuicklistObject();
 
         /* STORE option specified, set the sorting result as a List object */
         for (j = start; j <= end; j++) {
@@ -588,7 +578,6 @@ void sortCommandGeneric(client *c, int readonly) {
             }
         }
         if (outputlen) {
-            listTypeTryConversion(sobj,LIST_CONV_AUTO,NULL,NULL);
             setKey(c,c->db,storekey,sobj,0);
             notifyKeyspaceEvent(NOTIFY_LIST,"sortstore",storekey,
                                 c->db->id);

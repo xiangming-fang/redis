@@ -1,6 +1,6 @@
 {
     "GETSET": {
-        "summary": "Returns the previous string value of a key after setting it to a new value.",
+        "summary": "Set the string value of a key and return its old value",
         "complexity": "O(1)",
         "group": "string",
         "since": "1.0.0",
@@ -40,18 +40,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "oneOf": [
-                {
-                    "description": "The old value stored at the key.",
-                    "type": "string"
-                },
-                {
-                    "description": "The key does not exist.",
-                    "type": "null"
-                }
-            ]
-        },
         "arguments": [
             {
                 "name": "key",

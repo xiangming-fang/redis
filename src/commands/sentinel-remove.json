@@ -1,6 +1,6 @@
 {
     "REMOVE": {
-        "summary": "Stops monitoring.",
+        "summary": "Stop monitoring",
         "complexity": "O(1)",
         "group": "sentinel",
         "since": "2.8.4",
@@ -12,9 +12,6 @@
             "SENTINEL",
             "ONLY_SENTINEL"
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
                 "name": "master-name",

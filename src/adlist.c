@@ -76,8 +76,6 @@ void listEmpty(list *list)
  * This function can't fail. */
 void listRelease(list *list)
 {
-    if (!list)
-        return;
     listEmpty(list);
     zfree(list);
 }
@@ -95,14 +93,6 @@ list *listAddNodeHead(list *list, void *value)
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
-    listLinkNodeHead(list, node);
-    return list;
-}
-
-/*
- * Add a node that has already been allocated to the head of list
- */
-void listLinkNodeHead(list* list, listNode *node) {
     if (list->len == 0) {
         list->head = list->tail = node;
         node->prev = node->next = NULL;
@@ -113,6 +103,7 @@ void listLinkNodeHead(list* list, listNode *node) {
         list->head = node;
     }
     list->len++;
+    return list;
 }
 
 /* Add a new node to the list, to tail, containing the specified 'value'
@@ -128,14 +119,6 @@ list *listAddNodeTail(list *list, void *value)
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
     node->value = value;
-    listLinkNodeTail(list, node);
-    return list;
-}
-
-/*
- * Add a node that has already been allocated to the tail of list
- */
-void listLinkNodeTail(list *list, listNode *node) {
     if (list->len == 0) {
         list->head = list->tail = node;
         node->prev = node->next = NULL;
@@ -146,6 +129,7 @@ void listLinkNodeTail(list *list, listNode *node) {
         list->tail = node;
     }
     list->len++;
+    return list;
 }
 
 list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
@@ -178,20 +162,11 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
 }
 
 /* Remove the specified node from the specified list.
- * The node is freed. If free callback is provided the value is freed as well.
+ * It's up to the caller to free the private value of the node.
  *
  * This function can't fail. */
 void listDelNode(list *list, listNode *node)
 {
-    listUnlinkNode(list, node);
-    if (list->free) list->free(node->value);
-    zfree(node);
-}
-
-/*
- * Remove the specified node from the list without freeing it.
- */
-void listUnlinkNode(list *list, listNode *node) {
     if (node->prev)
         node->prev->next = node->next;
     else
@@ -200,10 +175,8 @@ void listUnlinkNode(list *list, listNode *node) {
         node->next->prev = node->prev;
     else
         list->tail = node->prev;
-
-    node->next = NULL;
-    node->prev = NULL;
-
+    if (list->free) list->free(node->value);
+    zfree(node);
     list->len--;
 }
 
@@ -407,13 +380,4 @@ void listJoin(list *l, list *o) {
     /* Setup other as an empty list. */
     o->head = o->tail = NULL;
     o->len = 0;
-}
-
-/* Initializes the node's value and sets its pointers
- * so that it is initially not a member of any list.
- */
-void listInitNode(listNode *node, void *value) {
-    node->prev = NULL;
-    node->next = NULL;
-    node->value = value;
 }

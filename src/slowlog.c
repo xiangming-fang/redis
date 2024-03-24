@@ -121,7 +121,7 @@ void slowlogInit(void) {
  * This function will make sure to trim the slow log accordingly to the
  * configured max length. */
 void slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration) {
-    if (server.slowlog_log_slower_than < 0 || server.slowlog_max_len == 0) return; /* Slowlog disabled */
+    if (server.slowlog_log_slower_than < 0) return; /* Slowlog disabled */
     if (duration >= server.slowlog_log_slower_than)
         listAddNodeHead(server.slowlog,
                         slowlogCreateEntry(c,argv,argc,duration));
@@ -162,8 +162,9 @@ NULL
     } else if ((c->argc == 2 || c->argc == 3) &&
                !strcasecmp(c->argv[1]->ptr,"get"))
     {
-        long count = 10;
+        long count = 10, sent = 0;
         listIter li;
+        void *totentries;
         listNode *ln;
         slowlogEntry *se;
 
@@ -180,15 +181,11 @@ NULL
             }
         }
 
-        if (count > (long)listLength(server.slowlog)) {
-            count = listLength(server.slowlog);
-        }
-        addReplyArrayLen(c, count);
-        listRewind(server.slowlog, &li);
-        while (count--) {
+        listRewind(server.slowlog,&li);
+        totentries = addReplyDeferredLen(c);
+        while(count-- && (ln = listNext(&li))) {
             int j;
 
-            ln = listNext(&li);
             se = ln->value;
             addReplyArrayLen(c,6);
             addReplyLongLong(c,se->id);
@@ -199,7 +196,9 @@ NULL
                 addReplyBulk(c,se->argv[j]);
             addReplyBulkCBuffer(c,se->peerid,sdslen(se->peerid));
             addReplyBulkCBuffer(c,se->cname,sdslen(se->cname));
+            sent++;
         }
+        setDeferredArrayLen(c,totentries,sent);
     } else {
         addReplySubcommandSyntaxError(c);
     }

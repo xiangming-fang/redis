@@ -1,6 +1,6 @@
 {
     "EVALSHA": {
-        "summary": "Executes a server-side Lua script by SHA1 digest.",
+        "summary": "Execute a Lua script server side",
         "complexity": "Depends on the script that is executed.",
         "group": "scripting",
         "since": "2.6.0",
@@ -60,9 +60,6 @@
                 "optional": true,
                 "multiple": true
             }
-        ],
-        "reply_schema": {
-            "description": "Return value depends on the script that is executed"
-        }
+        ]
     }
 }

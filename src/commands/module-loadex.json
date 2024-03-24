@@ -1,6 +1,6 @@
 {
     "LOADEX": {
-        "summary": "Loads a module using extended parameters.",
+        "summary": "Load a module with extended parameters",
         "complexity": "O(1)",
         "group": "server",
         "since": "7.0.0",
@@ -13,9 +13,6 @@
             "NOSCRIPT",
             "PROTECTED"
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
                 "name": "path",
@@ -42,9 +39,15 @@
             {
                 "name": "args",
                 "token": "ARGS",
-                "type": "string",
+                "type": "block",
                 "multiple": true,
-                "optional": true
+                "optional": true,
+                "arguments": [
+                    {
+                        "name": "arg",
+                        "type": "string"
+                    }
+                ]
             }
         ]
     }

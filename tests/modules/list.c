@@ -50,8 +50,7 @@ int list_getall(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
  * The number of occurrences of "i" and "r" in cmdstr) should correspond to the
  * number of args after cmdstr.
  *
- * Reply with a RESP3 Map, containing the number of edits (inserts, replaces, deletes)
- * performed, as well as the last index and the entry it points to.
+ * The reply is the number of edits (inserts + replaces + deletes) performed.
  */
 int list_edit(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc < 3) return RedisModule_WrongArity(ctx);
@@ -93,7 +92,7 @@ int list_edit(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     /* Iterate over the chars in cmdstr (edit instructions) */
-    long long num_inserts = 0, num_deletes = 0, num_replaces = 0;
+    long long num_edits = 0;
     long index = reverse ? -1 : 0;
     RedisModuleString *value;
 
@@ -103,17 +102,17 @@ int list_edit(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
             value = argv[argpos++];
             assert(RedisModule_ListInsert(key, index, value) == REDISMODULE_OK);
             index += reverse ? -1 : 1;
-            num_inserts++;
+            num_edits++;
             break;
         case 'd': /* delete */
             assert(RedisModule_ListDelete(key, index) == REDISMODULE_OK);
-            num_deletes++;
+            num_edits++;
             break;
         case 'r': /* replace */
             value = argv[argpos++];
             assert(RedisModule_ListSet(key, index, value) == REDISMODULE_OK);
             index += reverse ? -1 : 1;
-            num_replaces++;
+            num_edits++;
             break;
         case 'k': /* keep */
             index += reverse ? -1 : 1;
@@ -121,22 +120,7 @@ int list_edit(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         }
     }
 
-    RedisModuleString *v = RedisModule_ListGet(key, index);
-    RedisModule_ReplyWithMap(ctx, v ? 5 : 4);
-    RedisModule_ReplyWithCString(ctx, "i");
-    RedisModule_ReplyWithLongLong(ctx, num_inserts);
-    RedisModule_ReplyWithCString(ctx, "d");
-    RedisModule_ReplyWithLongLong(ctx, num_deletes);
-    RedisModule_ReplyWithCString(ctx, "r");
-    RedisModule_ReplyWithLongLong(ctx, num_replaces);
-    RedisModule_ReplyWithCString(ctx, "index");
-    RedisModule_ReplyWithLongLong(ctx, index);
-    if (v) {
-        RedisModule_ReplyWithCString(ctx, "entry");
-        RedisModule_ReplyWithString(ctx, v);
-        RedisModule_FreeString(ctx, v);
-    } 
-
+    RedisModule_ReplyWithLongLong(ctx, num_edits);
     RedisModule_CloseKey(key);
     return REDISMODULE_OK;
 }

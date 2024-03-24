@@ -23,7 +23,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     RedisModuleCommandInfo info = {
         .version = REDISMODULE_COMMAND_INFO_VERSION,
         .arity = -5,
-        .summary = "Appends a new message to a stream. Creates the key if it doesn't exist.",
+        .summary = "Appends a new entry to a stream",
         .since = "5.0.0",
         .complexity = "O(1) when adding a new entry, O(N) when trimming where N being the number of entries evicted.",
         .tips = "nondeterministic_output",
@@ -104,7 +104,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
                     {
                         .name = "threshold",
                         .type = REDISMODULE_ARG_TYPE_STRING,
-                        .display_text = "threshold" /* Just for coverage, doesn't have a visible effect */
                     },
                     {
                         .name = "count",
@@ -117,11 +116,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
                 }
             },
             {
-                .name = "id-selector",
+                .name = "id_or_auto",
                 .type = REDISMODULE_ARG_TYPE_ONEOF,
                 .subargs = (RedisModuleCommandArg[]){
                     {
-                        .name = "auto-id",
+                        .name = "auto_id",
                         .type = REDISMODULE_ARG_TYPE_PURE_TOKEN,
                         .token = "*"
                     },
@@ -133,7 +132,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
                 }
             },
             {
-                .name = "data",
+                .name = "field_value",
                 .type = REDISMODULE_ARG_TYPE_BLOCK,
                 .flags = REDISMODULE_CMD_ARG_MULTIPLE,
                 .subargs = (RedisModuleCommandArg[]){

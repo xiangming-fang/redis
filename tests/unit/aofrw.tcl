@@ -1,6 +1,4 @@
-# This unit has the potential to create huge .reqres files, causing log-req-res-validator.py to run for a very long time...
-# Since this unit doesn't do anything worth validating, reply_schema-wise, we decided to skip it
-start_server {tags {"aofrw external:skip logreqres:skip"} overrides {save {}}} {
+start_server {tags {"aofrw external:skip"}} {
     # Enable the AOF
     r config set appendonly yes
     r config set auto-aof-rewrite-percentage 0 ; # Disable auto-rewrite.
@@ -80,16 +78,10 @@ start_server {tags {"aofrw external:skip"} overrides {aof-use-rdb-preamble no}} 
     }
 
     foreach d {string int} {
-        foreach e {listpack quicklist} {
+        foreach e {quicklist} {
             test "AOF rewrite of list with $e encoding, $d data" {
                 r flushall
-                if {$e eq {listpack}} {
-                    r config set list-max-listpack-size -2
-                    set len 10
-                } else {
-                    r config set list-max-listpack-size 10
-                    set len 1000
-                }
+                set len 1000
                 for {set j 0} {$j < $len} {incr j} {
                     if {$d eq {string}} {
                         set data [randstring 0 16 alpha]

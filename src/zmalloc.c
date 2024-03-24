@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <assert.h>
 
 #ifdef __linux__
 #include <sys/mman.h>
@@ -50,6 +51,7 @@ void zlibc_free(void *ptr) {
 }
 
 #include <string.h>
+#include <pthread.h>
 #include "zmalloc.h"
 #include "atomicvar.h"
 
@@ -57,13 +59,14 @@ void zlibc_free(void *ptr) {
 
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
+#define ASSERT_NO_SIZE_OVERFLOW(sz)
 #else
-/* Use at least 8 bytes alignment on all systems. */
-#if SIZE_MAX < 0xffffffffffffffffull
-#define PREFIX_SIZE 8
+#if defined(__sun) || defined(__sparc) || defined(__sparc__)
+#define PREFIX_SIZE (sizeof(long long))
 #else
 #define PREFIX_SIZE (sizeof(size_t))
 #endif
+#define ASSERT_NO_SIZE_OVERFLOW(sz) assert((sz) + PREFIX_SIZE > (sz))
 #endif
 
 /* When using the libc allocator, use a minimum allocation size to match the
@@ -77,7 +80,6 @@ void zlibc_free(void *ptr) {
 #define calloc(count,size) tc_calloc(count,size)
 #define realloc(ptr,size) tc_realloc(ptr,size)
 #define free(ptr) tc_free(ptr)
-/* Explicitly override malloc/free etc when using jemalloc. */
 #elif defined(USE_JEMALLOC)
 #define malloc(size) je_malloc(size)
 #define calloc(count,size) je_calloc(count,size)
@@ -101,18 +103,10 @@ static void zmalloc_default_oom(size_t size) {
 
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
-#ifdef HAVE_MALLOC_SIZE
-void *extend_to_usable(void *ptr, size_t size) {
-    UNUSED(size);
-    return ptr;
-}
-#endif
-
 /* Try allocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
-static inline void *ztrymalloc_usable_internal(size_t size, size_t *usable) {
-    /* Possible overflow, return NULL, so that the caller can panic or handle a failed allocation. */
-    if (size >= SIZE_MAX/2) return NULL;
+void *ztrymalloc_usable(size_t size, size_t *usable) {
+    ASSERT_NO_SIZE_OVERFLOW(size);
     void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
 
     if (!ptr) return NULL;
@@ -122,7 +116,6 @@ static inline void *ztrymalloc_usable_internal(size_t size, size_t *usable) {
     if (usable) *usable = size;
     return ptr;
 #else
-    size = MALLOC_MIN_SIZE(size);
     *((size_t*)ptr) = size;
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
     if (usable) *usable = size;
@@ -130,39 +123,24 @@ static inline void *ztrymalloc_usable_internal(size_t size, size_t *usable) {
 #endif
 }
 
-void *ztrymalloc_usable(size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    void *ptr = ztrymalloc_usable_internal(size, &usable_size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
-    return ptr;
-}
-
 /* Allocate memory or panic */
 void *zmalloc(size_t size) {
-    void *ptr = ztrymalloc_usable_internal(size, NULL);
+    void *ptr = ztrymalloc_usable(size, NULL);
     if (!ptr) zmalloc_oom_handler(size);
     return ptr;
 }
 
 /* Try allocating memory, and return NULL if failed. */
 void *ztrymalloc(size_t size) {
-    void *ptr = ztrymalloc_usable_internal(size, NULL);
+    void *ptr = ztrymalloc_usable(size, NULL);
     return ptr;
 }
 
 /* Allocate memory or panic.
  * '*usable' is set to the usable size if non NULL. */
 void *zmalloc_usable(size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    void *ptr = ztrymalloc_usable_internal(size, &usable_size);
+    void *ptr = ztrymalloc_usable(size, usable);
     if (!ptr) zmalloc_oom_handler(size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
     return ptr;
 }
 
@@ -171,7 +149,7 @@ void *zmalloc_usable(size_t size, size_t *usable) {
  * Currently implemented only for jemalloc. Used for online defragmentation. */
 #ifdef HAVE_DEFRAG
 void *zmalloc_no_tcache(size_t size) {
-    if (size >= SIZE_MAX/2) zmalloc_oom_handler(size);
+    ASSERT_NO_SIZE_OVERFLOW(size);
     void *ptr = mallocx(size+PREFIX_SIZE, MALLOCX_TCACHE_NONE);
     if (!ptr) zmalloc_oom_handler(size);
     update_zmalloc_stat_alloc(zmalloc_size(ptr));
@@ -187,9 +165,8 @@ void zfree_no_tcache(void *ptr) {
 
 /* Try allocating memory and zero it, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
-static inline void *ztrycalloc_usable_internal(size_t size, size_t *usable) {
-    /* Possible overflow, return NULL, so that the caller can panic or handle a failed allocation. */
-    if (size >= SIZE_MAX/2) return NULL;
+void *ztrycalloc_usable(size_t size, size_t *usable) {
+    ASSERT_NO_SIZE_OVERFLOW(size);
     void *ptr = calloc(1, MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
     if (ptr == NULL) return NULL;
 
@@ -199,22 +176,11 @@ static inline void *ztrycalloc_usable_internal(size_t size, size_t *usable) {
     if (usable) *usable = size;
     return ptr;
 #else
-    size = MALLOC_MIN_SIZE(size);
     *((size_t*)ptr) = size;
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
     if (usable) *usable = size;
     return (char*)ptr+PREFIX_SIZE;
 #endif
-}
-
-void *ztrycalloc_usable(size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    void *ptr = ztrycalloc_usable_internal(size, &usable_size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
-    return ptr;
 }
 
 /* Allocate memory and zero it or panic.
@@ -226,40 +192,36 @@ void *zcalloc_num(size_t num, size_t size) {
         zmalloc_oom_handler(SIZE_MAX);
         return NULL;
     }
-    void *ptr = ztrycalloc_usable_internal(num*size, NULL);
+    void *ptr = ztrycalloc_usable(num*size, NULL);
     if (!ptr) zmalloc_oom_handler(num*size);
     return ptr;
 }
 
 /* Allocate memory and zero it or panic */
 void *zcalloc(size_t size) {
-    void *ptr = ztrycalloc_usable_internal(size, NULL);
+    void *ptr = ztrycalloc_usable(size, NULL);
     if (!ptr) zmalloc_oom_handler(size);
     return ptr;
 }
 
 /* Try allocating memory, and return NULL if failed. */
 void *ztrycalloc(size_t size) {
-    void *ptr = ztrycalloc_usable_internal(size, NULL);
+    void *ptr = ztrycalloc_usable(size, NULL);
     return ptr;
 }
 
 /* Allocate memory or panic.
  * '*usable' is set to the usable size if non NULL. */
 void *zcalloc_usable(size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    void *ptr = ztrycalloc_usable_internal(size, &usable_size);
+    void *ptr = ztrycalloc_usable(size, usable);
     if (!ptr) zmalloc_oom_handler(size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
     return ptr;
 }
 
 /* Try reallocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
-static inline void *ztryrealloc_usable_internal(void *ptr, size_t size, size_t *usable) {
+void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
+    ASSERT_NO_SIZE_OVERFLOW(size);
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
 #endif
@@ -275,13 +237,6 @@ static inline void *ztryrealloc_usable_internal(void *ptr, size_t size, size_t *
     /* Not freeing anything, just redirect to malloc. */
     if (ptr == NULL)
         return ztrymalloc_usable(size, usable);
-
-    /* Possible overflow, return NULL, so that the caller can panic or handle a failed allocation. */
-    if (size >= SIZE_MAX/2) {
-        zfree(ptr);
-        if (usable) *usable = 0;
-        return NULL;
-    }
 
 #ifdef HAVE_MALLOC_SIZE
     oldsize = zmalloc_size(ptr);
@@ -313,39 +268,24 @@ static inline void *ztryrealloc_usable_internal(void *ptr, size_t size, size_t *
 #endif
 }
 
-void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    ptr = ztryrealloc_usable_internal(ptr, size, &usable_size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
-    return ptr;
-}
-
 /* Reallocate memory and zero it or panic */
 void *zrealloc(void *ptr, size_t size) {
-    ptr = ztryrealloc_usable_internal(ptr, size, NULL);
+    ptr = ztryrealloc_usable(ptr, size, NULL);
     if (!ptr && size != 0) zmalloc_oom_handler(size);
     return ptr;
 }
 
 /* Try Reallocating memory, and return NULL if failed. */
 void *ztryrealloc(void *ptr, size_t size) {
-    ptr = ztryrealloc_usable_internal(ptr, size, NULL);
+    ptr = ztryrealloc_usable(ptr, size, NULL);
     return ptr;
 }
 
 /* Reallocate memory or panic.
  * '*usable' is set to the usable size if non NULL. */
 void *zrealloc_usable(void *ptr, size_t size, size_t *usable) {
-    size_t usable_size = 0;
-    ptr = ztryrealloc_usable(ptr, size, &usable_size);
+    ptr = ztryrealloc_usable(ptr, size, usable);
     if (!ptr && size != 0) zmalloc_oom_handler(size);
-#ifdef HAVE_MALLOC_SIZE
-    ptr = extend_to_usable(ptr, usable_size);
-#endif
-    if (usable) *usable = usable_size;
     return ptr;
 }
 
@@ -459,7 +399,7 @@ void zmadvise_dontneed(void *ptr) {
 #include <fcntl.h>
 #endif
 
-/* Get the i'th field from "/proc/self/stat" note i is 1 based as appears in the 'proc' man page */
+/* Get the i'th field from "/proc/self/stats" note i is 1 based as appears in the 'proc' man page */
 int get_proc_stat_ll(int i, long long *res) {
 #if defined(HAVE_PROC_STAT)
     char buf[4096];
@@ -609,7 +549,7 @@ size_t zmalloc_get_rss(void) {
     if ((fd = open(filename,O_RDONLY)) == -1) return 0;
     if (ioctl(fd, PIOCPSINFO, &info) == -1) {
         close(fd);
-        return 0;
+	return 0;
     }
 
     close(fd);
@@ -628,54 +568,9 @@ size_t zmalloc_get_rss(void) {
 
 #if defined(USE_JEMALLOC)
 
-#include "redisassert.h"
-
-#define STRINGIFY_(x) #x
-#define STRINGIFY(x) STRINGIFY_(x)
-
-/* Compute the total memory wasted in fragmentation of inside small arena bins.
- * Done by summing the memory in unused regs in all slabs of all small bins. */
-size_t zmalloc_get_frag_smallbins(void) {
-    unsigned nbins;
-    size_t sz, frag = 0;
-    char buf[100];
-
-    sz = sizeof(unsigned);
-    assert(!je_mallctl("arenas.nbins", &nbins, &sz, NULL, 0));
-    for (unsigned j = 0; j < nbins; j++) {
-        size_t curregs, curslabs, reg_size;
-        uint32_t nregs;
-
-        /* The size of the current bin */
-        snprintf(buf, sizeof(buf), "arenas.bin.%d.size", j);
-        sz = sizeof(size_t);
-        assert(!je_mallctl(buf, &reg_size, &sz, NULL, 0));
-
-        /* Number of used regions in the bin */
-        snprintf(buf, sizeof(buf), "stats.arenas." STRINGIFY(MALLCTL_ARENAS_ALL) ".bins.%d.curregs", j);
-        sz = sizeof(size_t);
-        assert(!je_mallctl(buf, &curregs, &sz, NULL, 0));
-
-        /* Number of regions per slab */
-        snprintf(buf, sizeof(buf), "arenas.bin.%d.nregs", j);
-        sz = sizeof(uint32_t);
-        assert(!je_mallctl(buf, &nregs, &sz, NULL, 0));
-
-        /* Number of current slabs in the bin */
-        snprintf(buf, sizeof(buf), "stats.arenas." STRINGIFY(MALLCTL_ARENAS_ALL) ".bins.%d.curslabs", j);
-        sz = sizeof(size_t);
-        assert(!je_mallctl(buf, &curslabs, &sz, NULL, 0));
-
-        /* Calculate the fragmentation bytes for the current bin and add it to the total. */
-        frag += ((nregs * curslabs) - curregs) * reg_size;
-    }
-
-    return frag;
-}
-
-int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *resident,
-                               size_t *retained, size_t *muzzy, size_t *frag_smallbins_bytes)
-{
+int zmalloc_get_allocator_info(size_t *allocated,
+                               size_t *active,
+                               size_t *resident) {
     uint64_t epoch = 1;
     size_t sz;
     *allocated = *resident = *active = 0;
@@ -692,26 +587,6 @@ int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *reside
     /* Unlike zmalloc_used_memory, this matches the stats.resident by taking
      * into account all allocations done by this process (not only zmalloc). */
     je_mallctl("stats.allocated", allocated, &sz, NULL, 0);
-
-    /* Retained memory is memory released by `madvised(..., MADV_DONTNEED)`, which is not part
-     * of RSS or mapped memory, and doesn't have a strong association with physical memory in the OS.
-     * It is still part of the VM-Size, and may be used again in later allocations. */
-    if (retained) {
-        *retained = 0;
-        je_mallctl("stats.retained", retained, &sz, NULL, 0);
-    }
-
-    /* Unlike retained, Muzzy representats memory released with `madvised(..., MADV_FREE)`.
-     * These pages will show as RSS for the process, until the OS decides to re-use them. */
-    if (muzzy) {
-        size_t pmuzzy, page;
-        assert(!je_mallctl("stats.arenas." STRINGIFY(MALLCTL_ARENAS_ALL) ".pmuzzy", &pmuzzy, &sz, NULL, 0));
-        assert(!je_mallctl("arenas.page", &page, &sz, NULL, 0));
-        *muzzy = pmuzzy * page;
-    }
-
-    /* Total size of consumed meomry in unused regs in small bins (AKA external fragmentation). */
-    *frag_smallbins_bytes = zmalloc_get_frag_smallbins();
     return 1;
 }
 
@@ -722,13 +597,13 @@ void set_jemalloc_bg_thread(int enable) {
     je_mallctl("background_thread", NULL, 0, &val, 1);
 }
 
-int jemalloc_purge(void) {
+int jemalloc_purge() {
     /* return all unused (reserved) pages to the OS */
     char tmp[32];
     unsigned narenas = 0;
     size_t sz = sizeof(unsigned);
     if (!je_mallctl("arenas.narenas", &narenas, &sz, NULL, 0)) {
-        snprintf(tmp, sizeof(tmp), "arena.%d.purge", narenas);
+        sprintf(tmp, "arena.%d.purge", narenas);
         if (!je_mallctl(tmp, NULL, 0, NULL, 0))
             return 0;
     }
@@ -737,12 +612,10 @@ int jemalloc_purge(void) {
 
 #else
 
-int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *resident,
-                               size_t *retained, size_t *muzzy, size_t *frag_smallbins_bytes)
-{
-    *allocated = *resident = *active = *frag_smallbins_bytes = 0;
-    if (retained) *retained = 0;
-    if (muzzy) *muzzy = 0;
+int zmalloc_get_allocator_info(size_t *allocated,
+                               size_t *active,
+                               size_t *resident) {
+    *allocated = *resident = *active = 0;
     return 1;
 }
 
@@ -750,20 +623,11 @@ void set_jemalloc_bg_thread(int enable) {
     ((void)(enable));
 }
 
-int jemalloc_purge(void) {
+int jemalloc_purge() {
     return 0;
 }
 
 #endif
-
-/* This function provides us access to the libc malloc_trim(). */
-void zlibc_trim(void) {
-#if defined(__GLIBC__) && !defined(USE_LIBC)
-    malloc_trim(0);
-#else
-    return;
-#endif
-}
 
 #if defined(__APPLE__)
 /* For proc_pidinfo() used later in zmalloc_get_smap_bytes_by_field().
@@ -909,55 +773,20 @@ size_t zmalloc_get_memory_size(void) {
 }
 
 #ifdef REDIS_TEST
-#include "testhelp.h"
-#include "redisassert.h"
-
-#define TEST(name) printf("test — %s\n", name);
-
 int zmalloc_test(int argc, char **argv, int flags) {
-    void *ptr, *ptr2;
+    void *ptr;
 
     UNUSED(argc);
     UNUSED(argv);
     UNUSED(flags);
-
     printf("Malloc prefix size: %d\n", (int) PREFIX_SIZE);
-
-    TEST("Initial used memory is 0") {
-        assert(zmalloc_used_memory() == 0);
-    }
-
-    TEST("Allocated 123 bytes") {
-        ptr = zmalloc(123);
-        printf("Allocated 123 bytes; used: %zu\n", zmalloc_used_memory());
-    }
-
-    TEST("Reallocated to 456 bytes") {
-        ptr = zrealloc(ptr, 456);
-        printf("Reallocated to 456 bytes; used: %zu\n", zmalloc_used_memory());
-    }
-
-    TEST("Callocated 123 bytes") {
-        ptr2 = zcalloc(123);
-        printf("Callocated 123 bytes; used: %zu\n", zmalloc_used_memory());
-    }
-
-    TEST("Freed pointers") {
-        zfree(ptr);
-        zfree(ptr2);
-        printf("Freed pointers; used: %zu\n", zmalloc_used_memory());
-    }
-
-    TEST("Allocated 0 bytes") {
-        ptr = zmalloc(0);
-        printf("Allocated 0 bytes; used: %zu\n", zmalloc_used_memory());
-        zfree(ptr);
-    }
-
-    TEST("At the end used memory is 0") {
-        assert(zmalloc_used_memory() == 0);
-    }
-
+    printf("Initial used memory: %zu\n", zmalloc_used_memory());
+    ptr = zmalloc(123);
+    printf("Allocated 123 bytes; used: %zu\n", zmalloc_used_memory());
+    ptr = zrealloc(ptr, 456);
+    printf("Reallocated to 456 bytes; used: %zu\n", zmalloc_used_memory());
+    zfree(ptr);
+    printf("Freed pointer; used: %zu\n", zmalloc_used_memory());
     return 0;
 }
 #endif

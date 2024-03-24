@@ -48,9 +48,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     memcpy(new_str, data, size);
     new_str[size] = '\0';
 
-    if (redisFormatCommand(&cmd, new_str) != -1)
-        hi_free(cmd);
+    redisFormatCommand(&cmd, new_str);
 
+    if (cmd != NULL)
+        hi_free(cmd);
     free(new_str);
     return 0;
 }

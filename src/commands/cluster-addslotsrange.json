@@ -1,6 +1,6 @@
 {
     "ADDSLOTSRANGE": {
-        "summary": "Assigns new hash slot ranges to a node.",
+        "summary": "Assign new hash slots to receiving node",
         "complexity": "O(N) where N is the total number of the slots between the start slot and end slot arguments.",
         "group": "cluster",
         "since": "7.0.0",
@@ -12,9 +12,12 @@
             "ADMIN",
             "STALE"
         ],
+        "command_tips": [
+            "NONDETERMINISTIC_OUTPUT"
+        ],
         "arguments": [
             {
-                "name": "range",
+                "name": "start-slot_end-slot",
                 "type": "block",
                 "multiple": true,
                 "arguments": [
@@ -28,9 +31,6 @@
                     }
                 ]
             }
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

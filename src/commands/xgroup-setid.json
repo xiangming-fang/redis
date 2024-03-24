@@ -1,6 +1,6 @@
 {
     "SETID": {
-        "summary": "Sets the last-delivered ID of a consumer group.",
+        "summary": "Set a consumer group to an arbitrary last delivered ID value.",
         "complexity": "O(1)",
         "group": "stream",
         "since": "5.0.0",
@@ -46,34 +46,30 @@
                 "key_spec_index": 0
             },
             {
-                "name": "group",
+                "name": "groupname",
                 "type": "string"
             },
             {
-                "name": "id-selector",
+                "name": "id",
                 "type": "oneof",
                 "arguments": [
                     {
-                        "name": "id",
+                        "name": "ID",
                         "type": "string"
                     },
                     {
-                        "name": "new-id",
+                        "name": "new_id",
                         "type": "pure-token",
                         "token": "$"
                     }
                 ]
             },
             {
-                "name": "entriesread",
-                "display": "entries-read",
+                "name": "entries_read",
                 "token": "ENTRIESREAD",
                 "type": "integer",
                 "optional": true
             }
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

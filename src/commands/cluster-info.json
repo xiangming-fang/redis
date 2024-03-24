@@ -1,6 +1,6 @@
 {
     "INFO": {
-        "summary": "Returns information about the state of a node.",
+        "summary": "Provides info about Redis Cluster node state",
         "complexity": "O(1)",
         "group": "cluster",
         "since": "3.0.0",
@@ -12,10 +12,6 @@
         ],
         "command_tips": [
             "NONDETERMINISTIC_OUTPUT"
-        ],
-        "reply_schema": {
-            "description": "A map between named fields and values in the form of <field>:<value> lines separated by newlines composed by the two bytes CRLF",
-            "type": "string"
-        }
+        ]
     }
 }

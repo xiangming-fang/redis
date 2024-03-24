@@ -1,6 +1,6 @@
 {
     "STRLEN": {
-        "summary": "Returns the length of a string value.",
+        "summary": "Get the length of the value stored in a key",
         "complexity": "O(1)",
         "group": "string",
         "since": "2.2.0",
@@ -32,11 +32,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "description": "The length of the string value stored at key, or 0 when key does not exist.",
-            "type": "integer",
-            "minimum": 0
-        },
         "arguments": [
             {
                 "name": "key",

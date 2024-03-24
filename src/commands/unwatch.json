@@ -1,6 +1,6 @@
 {
     "UNWATCH": {
-        "summary": "Forgets about watched keys of a transaction.",
+        "summary": "Forget about all watched keys",
         "complexity": "O(1)",
         "group": "transactions",
         "since": "2.2.0",
@@ -15,9 +15,6 @@
         ],
         "acl_categories": [
             "TRANSACTION"
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

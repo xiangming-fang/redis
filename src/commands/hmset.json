@@ -1,6 +1,6 @@
 {
     "HMSET": {
-        "summary": "Sets the values of multiple fields.",
+        "summary": "Set multiple hash fields to multiple values",
         "complexity": "O(N) where N is the number of fields being set.",
         "group": "hash",
         "since": "2.0.0",
@@ -39,9 +39,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
                 "name": "key",
@@ -49,7 +46,7 @@
                 "key_spec_index": 0
             },
             {
-                "name": "data",
+                "name": "field_value",
                 "type": "block",
                 "multiple": true,
                 "arguments": [

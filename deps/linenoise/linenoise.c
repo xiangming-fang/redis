@@ -134,8 +134,6 @@ static int atexit_registered = 0; /* Register atexit just 1 time. */
 static int history_max_len = LINENOISE_DEFAULT_HISTORY_MAX_LEN;
 static int history_len = 0;
 static char **history = NULL;
-static int *history_sensitive = NULL; /* An array records whether each line in
-                                       * history is sensitive. */
 
 /* The linenoiseState structure represents the state during line editing.
  * We pass this state to functions implementing specific editing
@@ -165,7 +163,6 @@ enum KEY_ACTION{
 	CTRL_F = 6,         /* Ctrl-f */
 	CTRL_H = 8,         /* Ctrl-h */
 	TAB = 9,            /* Tab */
-	NL = 10,            /* Enter typed before raw mode was enabled */
 	CTRL_K = 11,        /* Ctrl+k */
 	CTRL_L = 12,        /* Ctrl+l */
 	ENTER = 13,         /* Enter */
@@ -179,7 +176,7 @@ enum KEY_ACTION{
 };
 
 static void linenoiseAtExit(void);
-int linenoiseHistoryAdd(const char *line, int is_sensitive);
+int linenoiseHistoryAdd(const char *line);
 static void refreshLine(struct linenoiseState *l);
 
 /* Debugging macro. */
@@ -259,8 +256,8 @@ static int enableRawMode(int fd) {
      * We want read to return every single byte, without timeout. */
     raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0; /* 1 byte, no timer */
 
-    /* put terminal in raw mode */
-    if (tcsetattr(fd,TCSANOW,&raw) < 0) goto fatal;
+    /* put terminal in raw mode after flushing */
+    if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
     rawmode = 1;
     return 0;
 
@@ -271,7 +268,7 @@ fatal:
 
 static void disableRawMode(int fd) {
     /* Don't even check the return value as it's too late. */
-    if (rawmode && tcsetattr(fd,TCSANOW,&orig_termios) != -1)
+    if (rawmode && tcsetattr(fd,TCSAFLUSH,&orig_termios) != -1)
         rawmode = 0;
 }
 
@@ -820,7 +817,7 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
 
     /* The latest history entry is always our current buffer, that
      * initially is just an empty string. */
-    linenoiseHistoryAdd("", 0);
+    linenoiseHistoryAdd("");
 
     if (write(l.ofd,prompt,l.plen) == -1) return -1;
     while(1) {
@@ -843,8 +840,6 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
         }
 
         switch(c) {
-        case NL:       /* enter, typed before raw mode was enabled */
-            break;
         case ENTER:    /* enter */
             history_len--;
             free(history[history_len]);
@@ -1114,7 +1109,6 @@ static void freeHistory(void) {
         for (j = 0; j < history_len; j++)
             free(history[j]);
         free(history);
-        free(history_sensitive);
     }
 }
 
@@ -1131,7 +1125,7 @@ static void linenoiseAtExit(void) {
  * histories, but will work well for a few hundred of entries.
  *
  * Using a circular buffer is smarter, but a bit more complex to handle. */
-int linenoiseHistoryAdd(const char *line, int is_sensitive) {
+int linenoiseHistoryAdd(const char *line) {
     char *linecopy;
 
     if (history_max_len == 0) return 0;
@@ -1140,14 +1134,7 @@ int linenoiseHistoryAdd(const char *line, int is_sensitive) {
     if (history == NULL) {
         history = malloc(sizeof(char*)*history_max_len);
         if (history == NULL) return 0;
-        history_sensitive = malloc(sizeof(int)*history_max_len);
-        if (history_sensitive == NULL) {
-            free(history);
-            history = NULL;
-            return 0;
-        }
         memset(history,0,(sizeof(char*)*history_max_len));
-        memset(history_sensitive,0,(sizeof(int)*history_max_len));
     }
 
     /* Don't add duplicated lines. */
@@ -1160,11 +1147,9 @@ int linenoiseHistoryAdd(const char *line, int is_sensitive) {
     if (history_len == history_max_len) {
         free(history[0]);
         memmove(history,history+1,sizeof(char*)*(history_max_len-1));
-        memmove(history_sensitive,history_sensitive+1,sizeof(int)*(history_max_len-1));
         history_len--;
     }
     history[history_len] = linecopy;
-    history_sensitive[history_len] = is_sensitive;
     history_len++;
     return 1;
 }
@@ -1175,7 +1160,6 @@ int linenoiseHistoryAdd(const char *line, int is_sensitive) {
  * than the amount of items already inside the history. */
 int linenoiseHistorySetMaxLen(int len) {
     char **new;
-    int *new_sensitive;
 
     if (len < 1) return 0;
     if (history) {
@@ -1183,11 +1167,6 @@ int linenoiseHistorySetMaxLen(int len) {
 
         new = malloc(sizeof(char*)*len);
         if (new == NULL) return 0;
-        new_sensitive = malloc(sizeof(int)*len);
-        if (new_sensitive == NULL) {
-            free(new);
-            return 0;
-        }
 
         /* If we can't copy everything, free the elements we'll not use. */
         if (len < tocopy) {
@@ -1197,13 +1176,9 @@ int linenoiseHistorySetMaxLen(int len) {
             tocopy = len;
         }
         memset(new,0,sizeof(char*)*len);
-        memset(new_sensitive,0,sizeof(int)*len);
         memcpy(new,history+(history_len-tocopy), sizeof(char*)*tocopy);
-        memcpy(new_sensitive,history_sensitive+(history_len-tocopy), sizeof(int)*tocopy);
         free(history);
-        free(history_sensitive);
         history = new;
-        history_sensitive = new_sensitive;
     }
     history_max_len = len;
     if (history_len > history_max_len)
@@ -1223,7 +1198,7 @@ int linenoiseHistorySave(const char *filename) {
     if (fp == NULL) return -1;
     fchmod(fileno(fp),S_IRUSR|S_IWUSR);
     for (j = 0; j < history_len; j++)
-        if (!history_sensitive[j]) fprintf(fp,"%s\n",history[j]);
+        fprintf(fp,"%s\n",history[j]);
     fclose(fp);
     return 0;
 }
@@ -1245,7 +1220,7 @@ int linenoiseHistoryLoad(const char *filename) {
         p = strchr(buf,'\r');
         if (!p) p = strchr(buf,'\n');
         if (p) *p = '\0';
-        linenoiseHistoryAdd(buf, 0);
+        linenoiseHistoryAdd(buf);
     }
     fclose(fp);
     return 0;

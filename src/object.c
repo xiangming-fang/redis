@@ -30,7 +30,6 @@
 
 #include "server.h"
 #include "functions.h"
-#include "intset.h"  /* Compact integer set structure */
 #include <math.h>
 #include <ctype.h>
 
@@ -46,21 +45,15 @@ robj *createObject(int type, void *ptr) {
     o->encoding = OBJ_ENCODING_RAW;
     o->ptr = ptr;
     o->refcount = 1;
-    o->lru = 0;
-    return o;
-}
 
-void initObjectLRUOrLFU(robj *o) {
-    if (o->refcount == OBJ_SHARED_REFCOUNT)
-        return;
     /* Set the LRU to the current lruclock (minutes resolution), or
      * alternatively the LFU counter. */
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-        o->lru = (LFUGetTimeInMinutes() << 8) | LFU_INIT_VAL;
+        o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         o->lru = LRU_CLOCK();
     }
-    return;
+    return o;
 }
 
 /* Set a special refcount in the object to make it "shared":
@@ -69,7 +62,7 @@ void initObjectLRUOrLFU(robj *o) {
  * objects such as small integers from different threads without any
  * mutex.
  *
- * A common pattern to create shared objects:
+ * A common patter to create shared objects:
  *
  * robj *myobject = makeObjectShared(createObject(...));
  *
@@ -97,7 +90,11 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     o->encoding = OBJ_ENCODING_EMBSTR;
     o->ptr = sh+1;
     o->refcount = 1;
-    o->lru = 0;
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+        o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
+    } else {
+        o->lru = LRU_CLOCK();
+    }
 
     sh->len = len;
     sh->alloc = len;
@@ -142,24 +139,34 @@ robj *tryCreateStringObject(const char *ptr, size_t len) {
         return tryCreateRawStringObject(ptr,len);
 }
 
-/* Create a string object from a long long value according to the specified flag. */
-#define LL2STROBJ_AUTO 0       /* automatically create the optimal string object */
-#define LL2STROBJ_NO_SHARED 1  /* disallow shared objects */
-#define LL2STROBJ_NO_INT_ENC 2 /* disallow integer encoded objects. */
-robj *createStringObjectFromLongLongWithOptions(long long value, int flag) {
+/* Create a string object from a long long value. When possible returns a
+ * shared integer object, or at least an integer encoded one.
+ *
+ * If valueobj is non zero, the function avoids returning a shared
+ * integer, because the object is going to be used as value in the Redis key
+ * space (for instance when the INCR command is used), so we want LFU/LRU
+ * values specific for each key. */
+robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     robj *o;
 
-    if (value >= 0 && value < OBJ_SHARED_INTEGERS && flag == LL2STROBJ_AUTO) {
+    if (server.maxmemory == 0 ||
+        !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS))
+    {
+        /* If the maxmemory policy permits, we can still return shared integers
+         * even if valueobj is true. */
+        valueobj = 0;
+    }
+
+    if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) {
+        incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
-        if ((value >= LONG_MIN && value <= LONG_MAX) && flag != LL2STROBJ_NO_INT_ENC) {
+        if (value >= LONG_MIN && value <= LONG_MAX) {
             o = createObject(OBJ_STRING, NULL);
             o->encoding = OBJ_ENCODING_INT;
             o->ptr = (void*)((long)value);
         } else {
-            char buf[LONG_STR_SIZE];
-            int len = ll2string(buf, sizeof(buf), value);
-            o = createStringObject(buf, len);
+            o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
     return o;
@@ -168,27 +175,15 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int flag) {
 /* Wrapper for createStringObjectFromLongLongWithOptions() always demanding
  * to create a shared object if possible. */
 robj *createStringObjectFromLongLong(long long value) {
-    return createStringObjectFromLongLongWithOptions(value, LL2STROBJ_AUTO);
+    return createStringObjectFromLongLongWithOptions(value,0);
 }
 
-/* The function avoids returning a shared integer when LFU/LRU info
- * are needed, that is, when the object is used as a value in the key
- * space(for instance when the INCR command is used), and Redis is
- * configured to evict based on LFU/LRU, so we want LFU/LRU values
- * specific for each key. */
+/* Wrapper for createStringObjectFromLongLongWithOptions() avoiding a shared
+ * object when LFU/LRU info are needed, that is, when the object is used
+ * as a value in the key space, and Redis is configured to evict based on
+ * LFU/LRU. */
 robj *createStringObjectFromLongLongForValue(long long value) {
-    if (server.maxmemory == 0 || !(server.maxmemory_policy & MAXMEMORY_FLAG_NO_SHARED_INTEGERS)) {
-        /* If the maxmemory policy permits, we can still return shared integers */
-        return createStringObjectFromLongLongWithOptions(value, LL2STROBJ_AUTO);
-    } else {
-        return createStringObjectFromLongLongWithOptions(value, LL2STROBJ_NO_SHARED);
-    }
-}
-
-/* Create a string object that contains an sds inside it. That means it can't be
- * integer encoded (OBJ_ENCODING_INT), and it'll always be an EMBSTR type. */
-robj *createStringObjectFromLongLongWithSds(long long value) {
-    return createStringObjectFromLongLongWithOptions(value, LL2STROBJ_NO_INT_ENC);
+    return createStringObjectFromLongLongWithOptions(value,1);
 }
 
 /* Create a string object from a long double. If humanfriendly is non-zero
@@ -232,17 +227,10 @@ robj *dupStringObject(const robj *o) {
     }
 }
 
-robj *createQuicklistObject(int fill, int compress) {
-    quicklist *l = quicklistNew(fill, compress);
+robj *createQuicklistObject(void) {
+    quicklist *l = quicklistCreate();
     robj *o = createObject(OBJ_LIST,l);
     o->encoding = OBJ_ENCODING_QUICKLIST;
-    return o;
-}
-
-robj *createListListpackObject(void) {
-    unsigned char *lp = lpNew(0);
-    robj *o = createObject(OBJ_LIST,lp);
-    o->encoding = OBJ_ENCODING_LISTPACK;
     return o;
 }
 
@@ -257,13 +245,6 @@ robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
     o->encoding = OBJ_ENCODING_INTSET;
-    return o;
-}
-
-robj *createSetListpackObject(void) {
-    unsigned char *lp = lpNew(0);
-    robj *o = createObject(OBJ_SET, lp);
-    o->encoding = OBJ_ENCODING_LISTPACK;
     return o;
 }
 
@@ -315,8 +296,6 @@ void freeStringObject(robj *o) {
 void freeListObject(robj *o) {
     if (o->encoding == OBJ_ENCODING_QUICKLIST) {
         quicklistRelease(o->ptr);
-    } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
-        lpFree(o->ptr);
     } else {
         serverPanic("Unknown list encoding type");
     }
@@ -328,7 +307,6 @@ void freeSetObject(robj *o) {
         dictRelease((dict*) o->ptr);
         break;
     case OBJ_ENCODING_INTSET:
-    case OBJ_ENCODING_LISTPACK:
         zfree(o->ptr);
         break;
     default:
@@ -438,8 +416,6 @@ void dismissListObject(robj *o, size_t size_hint) {
                 node = node->next;
             }
         }
-    } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
-        dismissMemory(o->ptr, lpBytes((unsigned char*)o->ptr));
     } else {
         serverPanic("Unknown list encoding type");
     }
@@ -466,8 +442,6 @@ void dismissSetObject(robj *o, size_t size_hint) {
         dismissMemory(set->ht_table[1], DICTHT_SIZE(set->ht_size_exp[1])*sizeof(dictEntry*));
     } else if (o->encoding == OBJ_ENCODING_INTSET) {
         dismissMemory(o->ptr, intsetBlobLen((intset*)o->ptr));
-    } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
-        dismissMemory(o->ptr, lpBytes((unsigned char *)o->ptr));
     } else {
         serverPanic("Unknown set encoding type");
     }
@@ -614,25 +588,19 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
 }
 
 /* Optimize the SDS string inside the string object to require little space,
- * in case there is more than 10% of free space at the end of the SDS. */
-void trimStringObjectIfNeeded(robj *o, int trim_small_values) {
-    if (o->encoding != OBJ_ENCODING_RAW) return;
-    /* A string may have free space in the following cases:
-     * 1. When an arg len is greater than PROTO_MBULK_BIG_ARG the query buffer may be used directly as the SDS string.
-     * 2. When utilizing the argument caching mechanism in Lua. 
-     * 3. When calling from RM_TrimStringAllocation (trim_small_values is true). */
-    size_t len = sdslen(o->ptr);
-    if (len >= PROTO_MBULK_BIG_ARG ||
-        trim_small_values||
-        (server.executing_client && server.executing_client->flags & CLIENT_SCRIPT && len < LUA_CMD_OBJCACHE_MAX_LEN)) {
-        if (sdsavail(o->ptr) > len/10) {
-            o->ptr = sdsRemoveFreeSpace(o->ptr, 0);
-        }
+ * in case there is more than 10% of free space at the end of the SDS
+ * string. This happens because SDS strings tend to overallocate to avoid
+ * wasting too much time in allocations when appending to the string. */
+void trimStringObjectIfNeeded(robj *o) {
+    if (o->encoding == OBJ_ENCODING_RAW &&
+        sdsavail(o->ptr) > sdslen(o->ptr)/10)
+    {
+        o->ptr = sdsRemoveFreeSpace(o->ptr);
     }
 }
 
 /* Try to encode a string object in order to save space */
-robj *tryObjectEncodingEx(robj *o, int try_trim) {
+robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
     size_t len;
@@ -668,6 +636,7 @@ robj *tryObjectEncodingEx(robj *o, int try_trim) {
             value < OBJ_SHARED_INTEGERS)
         {
             decrRefCount(o);
+            incrRefCount(shared.integers[value]);
             return shared.integers[value];
         } else {
             if (o->encoding == OBJ_ENCODING_RAW) {
@@ -696,16 +665,18 @@ robj *tryObjectEncodingEx(robj *o, int try_trim) {
     }
 
     /* We can't encode the object...
-     * Do the last try, and at least optimize the SDS string inside */
-    if (try_trim)
-        trimStringObjectIfNeeded(o, 0);
+     *
+     * Do the last try, and at least optimize the SDS string inside
+     * the string object to require little space, in case there
+     * is more than 10% of free space at the end of the SDS string.
+     *
+     * We do that only for relatively large strings as this branch
+     * is only entered if the length of the string is greater than
+     * OBJ_ENCODING_EMBSTR_SIZE_LIMIT. */
+    trimStringObjectIfNeeded(o);
 
     /* Return the original object. */
     return o;
-}
-
-robj *tryObjectEncoding(robj *o) {
-    return tryObjectEncodingEx(o, 1);
 }
 
 /* Get a decoded version of an encoded object (returned as a new object).
@@ -739,7 +710,7 @@ robj *getDecodedObject(robj *o) {
 #define REDIS_COMPARE_BINARY (1<<0)
 #define REDIS_COMPARE_COLL (1<<1)
 
-int compareStringObjectsWithFlags(const robj *a, const robj *b, int flags) {
+int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
     serverAssertWithInfo(NULL,a,a->type == OBJ_STRING && b->type == OBJ_STRING);
     char bufa[128], bufb[128], *astr, *bstr;
     size_t alen, blen, minlen;
@@ -772,12 +743,12 @@ int compareStringObjectsWithFlags(const robj *a, const robj *b, int flags) {
 }
 
 /* Wrapper for compareStringObjectsWithFlags() using binary comparison. */
-int compareStringObjects(const robj *a, const robj *b) {
+int compareStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_BINARY);
 }
 
 /* Wrapper for compareStringObjectsWithFlags() using collation. */
-int collateStringObjects(const robj *a, const robj *b) {
+int collateStringObjects(robj *a, robj *b) {
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_COLL);
 }
 
@@ -1026,8 +997,6 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
                 samples++;
             } while ((node = node->next) && samples < sample_size);
             asize += (double)elesize/samples*ql->len;
-        } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
-            asize = sizeof(*o)+zmalloc_size(o->ptr);
         } else {
             serverPanic("Unknown list encoding");
         }
@@ -1035,17 +1004,15 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
         if (o->encoding == OBJ_ENCODING_HT) {
             d = o->ptr;
             di = dictGetIterator(d);
-            asize = sizeof(*o)+sizeof(dict)+(sizeof(struct dictEntry*)*dictBuckets(d));
+            asize = sizeof(*o)+sizeof(dict)+(sizeof(struct dictEntry*)*dictSlots(d));
             while((de = dictNext(di)) != NULL && samples < sample_size) {
                 ele = dictGetKey(de);
-                elesize += dictEntryMemUsage() + sdsZmallocSize(ele);
+                elesize += sizeof(struct dictEntry) + sdsZmallocSize(ele);
                 samples++;
             }
             dictReleaseIterator(di);
             if (samples) asize += (double)elesize/samples*dictSize(d);
         } else if (o->encoding == OBJ_ENCODING_INTSET) {
-            asize = sizeof(*o)+zmalloc_size(o->ptr);
-        } else if (o->encoding == OBJ_ENCODING_LISTPACK) {
             asize = sizeof(*o)+zmalloc_size(o->ptr);
         } else {
             serverPanic("Unknown set encoding");
@@ -1058,11 +1025,11 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
             zskiplist *zsl = ((zset*)o->ptr)->zsl;
             zskiplistNode *znode = zsl->header->level[0].forward;
             asize = sizeof(*o)+sizeof(zset)+sizeof(zskiplist)+sizeof(dict)+
-                    (sizeof(struct dictEntry*)*dictBuckets(d))+
+                    (sizeof(struct dictEntry*)*dictSlots(d))+
                     zmalloc_size(zsl->header);
             while(znode != NULL && samples < sample_size) {
                 elesize += sdsZmallocSize(znode->ele);
-                elesize += dictEntryMemUsage()+zmalloc_size(znode);
+                elesize += sizeof(struct dictEntry)+zmalloc_size(znode);
                 samples++;
                 znode = znode->level[0].forward;
             }
@@ -1076,12 +1043,12 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
         } else if (o->encoding == OBJ_ENCODING_HT) {
             d = o->ptr;
             di = dictGetIterator(d);
-            asize = sizeof(*o)+sizeof(dict)+(sizeof(struct dictEntry*)*dictBuckets(d));
+            asize = sizeof(*o)+sizeof(dict)+(sizeof(struct dictEntry*)*dictSlots(d));
             while((de = dictNext(di)) != NULL && samples < sample_size) {
                 ele = dictGetKey(de);
                 ele2 = dictGetVal(de);
                 elesize += sdsZmallocSize(ele) + sdsZmallocSize(ele2);
-                elesize += dictEntryMemUsage();
+                elesize += sizeof(struct dictEntry);
                 samples++;
             }
             dictReleaseIterator(di);
@@ -1104,8 +1071,7 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
         size_t lpsize = 0, samples = 0;
         while(samples < sample_size && raxNext(&ri)) {
             unsigned char *lp = ri.data;
-            /* Use the allocated size, since we overprovision the node initially. */
-            lpsize += zmalloc_size(lp);
+            lpsize += lpBytes(lp);
             samples++;
         }
         if (s->rax->numele <= samples) {
@@ -1117,8 +1083,7 @@ size_t objectComputeSize(robj *key, robj *o, size_t sample_size, int dbid) {
              * if there are a few elements in the radix tree. */
             raxSeek(&ri,"$",NULL,0);
             raxNext(&ri);
-            /* Use the allocated size, since we overprovision the node initially. */
-            asize += zmalloc_size(ri.data);
+            asize += lpBytes(ri.data);
         }
         raxStop(&ri);
 
@@ -1184,9 +1149,9 @@ struct redisMemOverhead *getMemoryOverheadData(void) {
     mh->total_frag_bytes =
         server.cron_malloc_stats.process_rss - server.cron_malloc_stats.zmalloc_used;
     mh->allocator_frag =
-        (float)server.cron_malloc_stats.allocator_frag_smallbins_bytes / server.cron_malloc_stats.allocator_allocated + 1;
+        (float)server.cron_malloc_stats.allocator_active / server.cron_malloc_stats.allocator_allocated;
     mh->allocator_frag_bytes =
-        server.cron_malloc_stats.allocator_frag_smallbins_bytes;
+        server.cron_malloc_stats.allocator_active - server.cron_malloc_stats.allocator_allocated;
     mh->allocator_rss =
         (float)server.cron_malloc_stats.allocator_resident / server.cron_malloc_stats.allocator_active;
     mh->allocator_rss_bytes =
@@ -1222,7 +1187,7 @@ struct redisMemOverhead *getMemoryOverheadData(void) {
 
     /* Computing the memory used by the clients would be O(N) if done
      * here online. We use our values computed incrementally by
-     * updateClientMemoryUsage(). */
+     * updateClientMemUsage(). */
     mh->clients_normal = server.stat_clients_type_memory[CLIENT_TYPE_MASTER]+
                          server.stat_clients_type_memory[CLIENT_TYPE_PUBSUB]+
                          server.stat_clients_type_memory[CLIENT_TYPE_NORMAL];
@@ -1246,31 +1211,30 @@ struct redisMemOverhead *getMemoryOverheadData(void) {
 
     for (j = 0; j < server.dbnum; j++) {
         redisDb *db = server.db+j;
-        if (!kvstoreNumAllocatedDicts(db->keys)) continue;
-
-        unsigned long long keyscount = kvstoreSize(db->keys);
+        long long keyscount = dictSize(db->dict);
+        if (keyscount==0) continue;
 
         mh->total_keys += keyscount;
         mh->db = zrealloc(mh->db,sizeof(mh->db[0])*(mh->num_dbs+1));
         mh->db[mh->num_dbs].dbid = j;
 
-        mem = kvstoreMemUsage(db->keys) +
-              keyscount * sizeof(robj);
+        mem = dictSize(db->dict) * sizeof(dictEntry) +
+              dictSlots(db->dict) * sizeof(dictEntry*) +
+              dictSize(db->dict) * sizeof(robj);
         mh->db[mh->num_dbs].overhead_ht_main = mem;
         mem_total+=mem;
 
-        mem = kvstoreMemUsage(db->expires);
+        mem = dictSize(db->expires) * sizeof(dictEntry) +
+              dictSlots(db->expires) * sizeof(dictEntry*);
         mh->db[mh->num_dbs].overhead_ht_expires = mem;
         mem_total+=mem;
 
-        mh->num_dbs++;
+        /* Account for the slot to keys map in cluster mode */
+        mem = dictSize(db->dict) * dictMetadataSize(db->dict);
+        mh->db[mh->num_dbs].overhead_ht_slot_to_keys = mem;
+        mem_total+=mem;
 
-        mh->overhead_db_hashtable_lut += kvstoreOverheadHashtableLut(db->keys);
-        mh->overhead_db_hashtable_lut += kvstoreOverheadHashtableLut(db->expires);
-        mh->overhead_db_hashtable_rehashing += kvstoreOverheadHashtableRehashing(db->keys);
-        mh->overhead_db_hashtable_rehashing += kvstoreOverheadHashtableRehashing(db->expires);
-        mh->db_dict_rehashing_count += kvstoreDictRehashingCount(db->keys);
-        mh->db_dict_rehashing_count += kvstoreDictRehashingCount(db->expires);
+        mh->num_dbs++;
     }
 
     mh->overhead_total = mem_total;
@@ -1283,7 +1247,7 @@ struct redisMemOverhead *getMemoryOverheadData(void) {
     if (zmalloc_used > mh->startup_allocated)
         net_usage = zmalloc_used - mh->startup_allocated;
     mh->dataset_perc = (float)mh->dataset*100/net_usage;
-    mh->bytes_per_key = mh->total_keys ? (mh->dataset / mh->total_keys) : 0;
+    mh->bytes_per_key = mh->total_keys ? (net_usage / mh->total_keys) : 0;
 
     return mh;
 }
@@ -1553,18 +1517,19 @@ NULL
                 return;
             }
         }
-        if ((de = dbFind(c->db, c->argv[2]->ptr)) == NULL) {
+        if ((de = dictFind(c->db->dict,c->argv[2]->ptr)) == NULL) {
             addReplyNull(c);
             return;
         }
         size_t usage = objectComputeSize(c->argv[2],dictGetVal(de),samples,c->db->id);
         usage += sdsZmallocSize(dictGetKey(de));
-        usage += dictEntryMemUsage();
+        usage += sizeof(dictEntry);
+        usage += dictMetadataSize(c->db->dict);
         addReplyLongLong(c,usage);
     } else if (!strcasecmp(c->argv[1]->ptr,"stats") && c->argc == 2) {
         struct redisMemOverhead *mh = getMemoryOverheadData();
 
-        addReplyMapLen(c,31+mh->num_dbs);
+        addReplyMapLen(c,27+mh->num_dbs);
 
         addReplyBulkCString(c,"peak.allocated");
         addReplyLongLong(c,mh->peak_allocated);
@@ -1600,26 +1565,21 @@ NULL
             char dbname[32];
             snprintf(dbname,sizeof(dbname),"db.%zd",mh->db[j].dbid);
             addReplyBulkCString(c,dbname);
-            addReplyMapLen(c,2);
+            addReplyMapLen(c,3);
 
             addReplyBulkCString(c,"overhead.hashtable.main");
             addReplyLongLong(c,mh->db[j].overhead_ht_main);
 
             addReplyBulkCString(c,"overhead.hashtable.expires");
             addReplyLongLong(c,mh->db[j].overhead_ht_expires);
+
+            addReplyBulkCString(c,"overhead.hashtable.slot-to-keys");
+            addReplyLongLong(c,mh->db[j].overhead_ht_slot_to_keys);
         }
 
-        addReplyBulkCString(c,"overhead.db.hashtable.lut");
-        addReplyLongLong(c, mh->overhead_db_hashtable_lut);
-
-        addReplyBulkCString(c,"overhead.db.hashtable.rehashing");
-        addReplyLongLong(c, mh->overhead_db_hashtable_rehashing);
 
         addReplyBulkCString(c,"overhead.total");
         addReplyLongLong(c,mh->overhead_total);
-
-        addReplyBulkCString(c,"db.dict.rehashing.count");
-        addReplyLongLong(c, mh->db_dict_rehashing_count);
 
         addReplyBulkCString(c,"keys.count");
         addReplyLongLong(c,mh->total_keys);
@@ -1644,9 +1604,6 @@ NULL
 
         addReplyBulkCString(c,"allocator.resident");
         addReplyLongLong(c,server.cron_malloc_stats.allocator_resident);
-
-        addReplyBulkCString(c,"allocator.muzzy");
-        addReplyLongLong(c,server.cron_malloc_stats.allocator_muzzy);
 
         addReplyBulkCString(c,"allocator-fragmentation.ratio");
         addReplyDouble(c,mh->allocator_frag);

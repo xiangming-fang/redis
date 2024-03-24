@@ -3,7 +3,6 @@
 uname_S:= $(shell sh -c 'uname -s 2>/dev/null || echo not')
 
 LUA_DEBUG?=no
-LUA_COVERAGE?=no
 
 CCCOLOR="\033[34m"
 LINKCOLOR="\033[34;1m"
@@ -41,12 +40,11 @@ distclean:
 	-(cd lua && $(MAKE) clean) > /dev/null || true
 	-(cd jemalloc && [ -f Makefile ] && $(MAKE) distclean) > /dev/null || true
 	-(cd hdr_histogram && $(MAKE) clean) > /dev/null || true
-	-(cd fpconv && $(MAKE) clean) > /dev/null || true
 	-(rm -f .make-*)
 
 .PHONY: distclean
 
-ifneq (,$(filter $(BUILD_TLS),yes module))
+ifeq ($(BUILD_TLS),yes)
     HIREDIS_MAKE_FLAGS = USE_SSL=1
 endif
 
@@ -68,12 +66,6 @@ hdr_histogram: .make-prerequisites
 
 .PHONY: hdr_histogram
 
-fpconv: .make-prerequisites
-	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	cd fpconv && $(MAKE)
-
-.PHONY: fpconv
-
 ifeq ($(uname_S),SunOS)
 	# Make isinf() available
 	LUA_CFLAGS= -D__C99FEATURES__=1
@@ -86,11 +78,6 @@ ifeq ($(LUA_DEBUG),yes)
 else
 	LUA_CFLAGS+= -O2 
 endif
-ifeq ($(LUA_COVERAGE),yes)
-	LUA_CFLAGS += -fprofile-arcs -ftest-coverage
-	LUA_LDFLAGS += -fprofile-arcs -ftest-coverage
-endif
-
 # lua's Makefile defines AR="ar rcu", which is unusual, and makes it more
 # challenging to cross-compile lua (and redis).  These defines make it easier
 # to fit redis into cross-compilation environments, which typically set AR.
@@ -103,8 +90,8 @@ lua: .make-prerequisites
 
 .PHONY: lua
 
-JEMALLOC_CFLAGS=$(CFLAGS)
-JEMALLOC_LDFLAGS=$(LDFLAGS)
+JEMALLOC_CFLAGS= -std=gnu99 -Wall -pipe -g3 -O3 -funroll-loops $(CFLAGS)
+JEMALLOC_LDFLAGS= $(LDFLAGS)
 
 ifneq ($(DEB_HOST_GNU_TYPE),)
 JEMALLOC_CONFIGURE_OPTS += --host=$(DEB_HOST_GNU_TYPE)
@@ -112,7 +99,7 @@ endif
 
 jemalloc: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	cd jemalloc && ./configure --disable-cxx --with-version=5.3.0-0-g0 --with-lg-quantum=3 --disable-cache-oblivious --with-jemalloc-prefix=je_ CFLAGS="$(JEMALLOC_CFLAGS)" LDFLAGS="$(JEMALLOC_LDFLAGS)" $(JEMALLOC_CONFIGURE_OPTS)
-	cd jemalloc && $(MAKE) lib/libjemalloc.a
+	cd jemalloc && ./configure --with-version=5.2.1-0-g0 --with-lg-quantum=3 --with-jemalloc-prefix=je_ CFLAGS="$(JEMALLOC_CFLAGS)" LDFLAGS="$(JEMALLOC_LDFLAGS)" $(JEMALLOC_CONFIGURE_OPTS)
+	cd jemalloc && $(MAKE) CFLAGS="$(JEMALLOC_CFLAGS)" LDFLAGS="$(JEMALLOC_LDFLAGS)" lib/libjemalloc.a
 
 .PHONY: jemalloc

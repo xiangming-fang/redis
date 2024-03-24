@@ -1,9 +1,9 @@
 {
     "PAUSE": {
-        "summary": "Suspends commands processing.",
+        "summary": "Stop processing commands from clients for some time",
         "complexity": "O(1)",
         "group": "connection",
-        "since": "3.0.0",
+        "since": "2.9.50",
         "arity": -3,
         "container": "CLIENT",
         "function": "clientCommand",
@@ -46,9 +46,6 @@
                     }
                 ]
             }
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

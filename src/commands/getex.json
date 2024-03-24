@@ -1,6 +1,6 @@
 {
     "GETEX": {
-        "summary": "Returns the string value of a key after setting its expiration time.",
+        "summary": "Get the value of a key and optionally set its expiration",
         "complexity": "O(1)",
         "group": "string",
         "since": "6.2.0",
@@ -35,18 +35,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "oneOf": [
-                {
-                    "description": "The value of the key.",
-                    "type": "string"
-                },
-                {
-                    "description": "Key does not exist.",
-                    "type": "null"
-                }
-            ]
-        },
         "arguments": [
             {
                 "name": "key",

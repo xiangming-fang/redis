@@ -1,6 +1,6 @@
 {
     "NO-EVICT": {
-        "summary": "Sets the client eviction mode of the connection.",
+        "summary": "Set client eviction mode for the current connection",
         "complexity": "O(1)",
         "group": "connection",
         "since": "7.0.0",
@@ -34,9 +34,6 @@
                     }
                 ]
             }
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

@@ -1,6 +1,6 @@
 {
     "DECR": {
-        "summary": "Decrements the integer value of a key by one. Uses 0 as initial value if the key doesn't exist.",
+        "summary": "Decrement the integer value of a key by one",
         "complexity": "O(1)",
         "group": "string",
         "since": "1.0.0",
@@ -35,10 +35,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "type": "integer",
-            "description": "The value of the key after decrementing it."
-        },
         "arguments": [
             {
                 "name": "key",

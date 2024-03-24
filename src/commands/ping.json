@@ -1,6 +1,6 @@
 {
     "PING": {
-        "summary": "Returns the server's liveliness response.",
+        "summary": "Ping the server",
         "complexity": "O(1)",
         "group": "connection",
         "since": "1.0.0",
@@ -17,18 +17,6 @@
             "REQUEST_POLICY:ALL_SHARDS",
             "RESPONSE_POLICY:ALL_SUCCEEDED"
         ],
-        "reply_schema": {
-            "anyOf": [
-                {
-                    "const": "PONG",
-                    "description": "Default reply."
-                },
-                {
-                    "type": "string",
-                    "description": "Relay of given `message`."
-                }
-            ]
-        },
         "arguments": [
             {
                 "name": "message",

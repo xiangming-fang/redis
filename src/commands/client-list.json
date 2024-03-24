@@ -1,6 +1,6 @@
 {
     "LIST": {
-        "summary": "Lists open connections.",
+        "summary": "Get the list of client connections",
         "complexity": "O(N) where N is the number of client connections",
         "group": "connection",
         "since": "2.4.0",
@@ -17,20 +17,8 @@
                 "Added optional `TYPE` filter."
             ],
             [
-                "6.0.0",
-                "Added `user` field."
-            ],
-            [
                 "6.2.0",
-                "Added `argv-mem`, `tot-mem`, `laddr` and `redir` fields and the optional `ID` filter."
-            ],
-            [
-                "7.0.0",
-                "Added `resp`, `multi-mem`, `rbs` and `rbp` fields."
-            ],
-            [
-                "7.0.3",
-                "Added `ssub` field."
+                "Added `laddr` field and the optional `ID` filter."
             ]
         ],
         "command_flags": [
@@ -46,14 +34,10 @@
         "command_tips": [
             "NONDETERMINISTIC_OUTPUT"
         ],
-        "reply_schema": {
-            "type": "string",
-            "description": "Information and statistics about client connections"
-        },
         "arguments": [
             {
                 "token": "TYPE",
-                "name": "client-type",
+                "name": "normal_master_replica_pubsub",
                 "type": "oneof",
                 "optional": true,
                 "since": "5.0.0",
@@ -81,12 +65,18 @@
                 ]
             },
             {
-                "name": "client-id",
+                "name": "id",
                 "token": "ID",
-                "type": "integer",
+                "type": "block",
                 "optional": true,
-                "multiple": true,
-                "since": "6.2.0"
+                "since": "6.2.0",
+                "arguments": [
+                    {
+                        "name": "client-id",
+                        "type": "integer",
+                        "multiple": true
+                    }
+                ]
             }
         ]
     }

@@ -1,6 +1,6 @@
 {
     "SELECT": {
-        "summary": "Changes the selected database.",
+        "summary": "Change the selected database for the current connection",
         "complexity": "O(1)",
         "group": "connection",
         "since": "1.0.0",
@@ -14,9 +14,6 @@
         "acl_categories": [
             "CONNECTION"
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
                 "name": "index",

@@ -29,8 +29,6 @@
 #include "server.h"
 #include "cluster.h"
 
-#include <math.h>
-
 /* ========================== Clients timeouts ============================= */
 
 /* Check if this blocked client timedout (does nothing if the client is
@@ -38,11 +36,12 @@
  * Otherwise 0 is returned and no operation is performed. */
 int checkBlockedClientTimeout(client *c, mstime_t now) {
     if (c->flags & CLIENT_BLOCKED &&
-        c->bstate.timeout != 0
-        && c->bstate.timeout < now)
+        c->bpop.timeout != 0
+        && c->bpop.timeout < now)
     {
         /* Handle blocking operation specific timeout. */
-        unblockClientOnTimeout(c);
+        replyToBlockedClientTimedOut(c);
+        unblockClient(c);
         return 1;
     } else {
         return 0;
@@ -72,7 +71,7 @@ int clientsCronHandleTimeout(client *c, mstime_t now_ms) {
          * into keys no longer served by this server. */
         if (server.cluster_enabled) {
             if (clusterRedirectBlockedClientIfNeeded(c))
-                unblockClientOnError(c, NULL);
+                unblockClient(c);
         }
     }
     return 0;
@@ -113,8 +112,8 @@ void decodeTimeoutKey(unsigned char *buf, uint64_t *toptr, client **cptr) {
  * to handle blocked clients timeouts. The client is not added to the list
  * if its timeout is zero (block forever). */
 void addClientToTimeoutTable(client *c) {
-    if (c->bstate.timeout == 0) return;
-    uint64_t timeout = c->bstate.timeout;
+    if (c->bpop.timeout == 0) return;
+    uint64_t timeout = c->bpop.timeout;
     unsigned char buf[CLIENT_ST_KEYLEN];
     encodeTimeoutKey(buf,timeout,c);
     if (raxTryInsert(server.clients_timeout_table,buf,sizeof(buf),NULL,NULL))
@@ -126,7 +125,7 @@ void addClientToTimeoutTable(client *c) {
 void removeClientFromTimeoutTable(client *c) {
     if (!(c->flags & CLIENT_IN_TO_TABLE)) return;
     c->flags &= ~CLIENT_IN_TO_TABLE;
-    uint64_t timeout = c->bstate.timeout;
+    uint64_t timeout = c->bpop.timeout;
     unsigned char buf[CLIENT_ST_KEYLEN];
     encodeTimeoutKey(buf,timeout,c);
     raxRemove(server.clients_timeout_table,buf,sizeof(buf),NULL);
@@ -165,19 +164,12 @@ void handleBlockedClientsTimeout(void) {
 int getTimeoutFromObjectOrReply(client *c, robj *object, mstime_t *timeout, int unit) {
     long long tval;
     long double ftval;
-    mstime_t now = commandTimeSnapshot();
 
     if (unit == UNIT_SECONDS) {
         if (getLongDoubleFromObjectOrReply(c,object,&ftval,
             "timeout is not a float or out of range") != C_OK)
             return C_ERR;
-
-        ftval *= 1000.0;  /* seconds => millisec */
-        if (ftval > LLONG_MAX) {
-            addReplyError(c, "timeout is out of range");
-            return C_ERR;
-        }
-        tval = (long long) ceill(ftval);
+        tval = (long long) (ftval * 1000.0);
     } else {
         if (getLongLongFromObjectOrReply(c,object,&tval,
             "timeout is not an integer or out of range") != C_OK)
@@ -190,11 +182,7 @@ int getTimeoutFromObjectOrReply(client *c, robj *object, mstime_t *timeout, int 
     }
 
     if (tval > 0) {
-        if  (tval > LLONG_MAX - now) {
-            addReplyError(c,"timeout is out of range"); /* 'tval+now' would overflow */
-            return C_ERR;
-        }
-        tval += now;
+        tval += mstime();
     }
     *timeout = tval;
 

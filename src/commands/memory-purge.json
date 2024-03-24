@@ -1,6 +1,6 @@
 {
     "PURGE": {
-        "summary": "Asks the allocator to release memory.",
+        "summary": "Ask the allocator to release memory",
         "complexity": "Depends on how much memory is allocated, could be slow",
         "group": "server",
         "since": "4.0.0",
@@ -10,9 +10,6 @@
         "command_tips": [
             "REQUEST_POLICY:ALL_SHARDS",
             "RESPONSE_POLICY:ALL_SUCCEEDED"
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

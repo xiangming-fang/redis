@@ -63,6 +63,24 @@ test "It is possible to write and read from the cluster" {
     cluster_write_test 0
 }
 
+test "Function no-cluster flag" {
+    R 1 function load {#!lua name=test
+        redis.register_function{function_name='f1', callback=function() return 'hello' end, flags={'no-cluster'}}
+    }
+    catch {R 1 fcall f1 0} e
+    assert_match {*Can not run script on cluster, 'no-cluster' flag is set*} $e
+}
+
+test "Script no-cluster flag" {
+    catch {
+        R 1 eval {#!lua flags=no-cluster
+            return 1
+        } 0
+    } e
+    
+    assert_match {*Can not run script on cluster, 'no-cluster' flag is set*} $e
+}
+
 test "CLUSTER RESET SOFT test" {
     set last_epoch_node0 [get_info_field [R 0 cluster info] cluster_current_epoch]
     R 0 FLUSHALL
@@ -75,15 +93,3 @@ test "CLUSTER RESET SOFT test" {
     assert {[get_info_field [R 1 cluster info] cluster_current_epoch] eq $last_epoch_node1}
 }
 
-test "Coverage: CLUSTER HELP" {
-    assert_match "*CLUSTER <subcommand> *" [R 0 CLUSTER HELP]
-}
-
-test "Coverage: ASKING" {
-    assert_equal {OK} [R 0 ASKING]
-}
-
-test "CLUSTER SLAVES and CLUSTER REPLICAS with zero replicas" {
-    assert_equal {} [R 0 cluster slaves [R 0 CLUSTER MYID]]
-    assert_equal {} [R 0 cluster replicas [R 0 CLUSTER MYID]]
-}

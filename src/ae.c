@@ -103,11 +103,7 @@ int aeGetSetSize(aeEventLoop *eventLoop) {
     return eventLoop->setsize;
 }
 
-/*
- * Tell the event processing to change the wait timeout as soon as possible.
- *
- * Note: it just means you turn on/off the global AE_DONT_WAIT.
- */
+/* Tells the next iteration/s of the event processing to set timeout of 0. */
 void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
     if (noWait)
         eventLoop->flags |= AE_DONT_WAIT;
@@ -149,8 +145,6 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     aeTimeEvent *next_te, *te = eventLoop->timeEventHead;
     while (te) {
         next_te = te->next;
-        if (te->finalizerProc)
-            te->finalizerProc(eventLoop, te->clientData);
         zfree(te);
         te = next_te;
     }
@@ -269,7 +263,7 @@ static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
 
     aeTimeEvent *earliest = NULL;
     while (te) {
-        if ((!earliest || te->when < earliest->when) && te->id != AE_DELETED_EVENT_ID)
+        if (!earliest || te->when < earliest->when)
             earliest = te;
         te = te->next;
     }
@@ -335,7 +329,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             processed++;
             now = getMonotonicUs();
             if (retval != AE_NOMORE) {
-                te->when = now + (monotime)retval * 1000;
+                te->when = now + retval * 1000;
             } else {
                 te->id = AE_DELETED_EVENT_ID;
             }
@@ -345,8 +339,8 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
     return processed;
 }
 
-/* Process every pending file event, then every pending time event
- * (that may be registered by file event callbacks just processed).
+/* Process every pending time event, then every pending file event
+ * (that may be registered by time event callbacks just processed).
  * Without special flags the function sleeps until some file event
  * fires, or when the next time event occurs (if any).
  *
@@ -367,43 +361,47 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
     /* Nothing to do? return ASAP */
     if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
 
-    /* Note that we want to call aeApiPoll() even if there are no
+    /* Note that we want to call select() even if there are no
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
         int j;
-        struct timeval tv, *tvp = NULL; /* NULL means infinite wait. */
-        int64_t usUntilTimer;
+        struct timeval tv, *tvp;
+        int64_t usUntilTimer = -1;
 
-        if (eventLoop->beforesleep != NULL && (flags & AE_CALL_BEFORE_SLEEP))
-            eventLoop->beforesleep(eventLoop);
-
-        /* The eventLoop->flags may be changed inside beforesleep.
-         * So we should check it after beforesleep be called. At the same time,
-         * the parameter flags always should have the highest priority.
-         * That is to say, once the parameter flag is set to AE_DONT_WAIT,
-         * no matter what value eventLoop->flags is set to, we should ignore it. */
-        if ((flags & AE_DONT_WAIT) || (eventLoop->flags & AE_DONT_WAIT)) {
-            tv.tv_sec = tv.tv_usec = 0;
-            tvp = &tv;
-        } else if (flags & AE_TIME_EVENTS) {
+        if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
             usUntilTimer = usUntilEarliestTimer(eventLoop);
-            if (usUntilTimer >= 0) {
-                tv.tv_sec = usUntilTimer / 1000000;
-                tv.tv_usec = usUntilTimer % 1000000;
+
+        if (usUntilTimer >= 0) {
+            tv.tv_sec = usUntilTimer / 1000000;
+            tv.tv_usec = usUntilTimer % 1000000;
+            tvp = &tv;
+        } else {
+            /* If we have to check for events but need to return
+             * ASAP because of AE_DONT_WAIT we need to set the timeout
+             * to zero */
+            if (flags & AE_DONT_WAIT) {
+                tv.tv_sec = tv.tv_usec = 0;
                 tvp = &tv;
+            } else {
+                /* Otherwise we can block */
+                tvp = NULL; /* wait forever */
             }
         }
+
+        if (eventLoop->flags & AE_DONT_WAIT) {
+            tv.tv_sec = tv.tv_usec = 0;
+            tvp = &tv;
+        }
+
+        if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
+            eventLoop->beforesleep(eventLoop);
+
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
         numevents = aeApiPoll(eventLoop, tvp);
-
-        /* Don't process file events if not requested. */
-        if (!(flags & AE_FILE_EVENTS)) {
-            numevents = 0;
-        }
 
         /* After sleep callback. */
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)

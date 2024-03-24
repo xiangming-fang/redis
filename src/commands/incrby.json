@@ -1,6 +1,6 @@
 {
     "INCRBY": {
-        "summary": "Increments the integer value of a key by a number. Uses 0 as initial value if the key doesn't exist.",
+        "summary": "Increment the integer value of a key by the given amount",
         "complexity": "O(1)",
         "group": "string",
         "since": "1.0.0",
@@ -35,10 +35,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "type": "integer",
-            "description": "The value of the key after incrementing it."
-        },
         "arguments": [
             {
                 "name": "key",

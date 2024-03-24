@@ -1,6 +1,6 @@
 {
     "LIST": {
-        "summary": "Returns a list of command names.",
+        "summary": "Get an array of Redis command names",
         "complexity": "O(N) where N is the total number of Redis commands",
         "group": "server",
         "since": "7.0.0",
@@ -42,14 +42,6 @@
                     }
                 ]
             }
-        ],
-        "reply_schema": {
-            "type": "array",
-            "items": {
-                "description": "command name",
-                "type": "string"
-            },
-            "uniqueItems": true
-        }
+        ]
     }
 }

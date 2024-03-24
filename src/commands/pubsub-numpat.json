@@ -1,6 +1,6 @@
 {
     "NUMPAT": {
-        "summary": "Returns a count of unique pattern subscriptions.",
+        "summary": "Get the count of unique patterns pattern subscriptions",
         "complexity": "O(1)",
         "group": "pubsub",
         "since": "2.8.0",
@@ -11,11 +11,6 @@
             "PUBSUB",
             "LOADING",
             "STALE"
-        ],
-        "reply_schema": {
-            "description": "the number of patterns all the clients are subscribed to",
-            "type": "integer",
-            "minimum": 0
-        }
+        ]
     }
 }

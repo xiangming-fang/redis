@@ -3,7 +3,6 @@
  */
 
 #include "redismodule.h"
-#include <math.h>
 
 int rw_string(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc != 2) return RedisModule_WrongArity(ctx);
@@ -28,22 +27,12 @@ int rw_int(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return RedisModule_ReplyWithLongLong(ctx, integer);
 }
 
-/* When one argument is given, it is returned as a double,
- * when two arguments are given, it returns a/b. */
 int rw_double(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (argc==1)
-        return RedisModule_ReplyWithDouble(ctx, NAN);
+    if (argc != 2) return RedisModule_WrongArity(ctx);
 
-    if (argc != 2 && argc != 3) return RedisModule_WrongArity(ctx);
-
-    double dbl, dbl2;
+    double dbl;
     if (RedisModule_StringToDouble(argv[1], &dbl) != REDISMODULE_OK)
         return RedisModule_ReplyWithError(ctx, "Arg cannot be parsed as a double");
-    if (argc == 3) {
-        if (RedisModule_StringToDouble(argv[2], &dbl2) != REDISMODULE_OK)
-            return RedisModule_ReplyWithError(ctx, "Arg cannot be parsed as a double");
-        dbl /= dbl2;
-    }
 
     return RedisModule_ReplyWithDouble(ctx, dbl);
 }
@@ -156,14 +145,6 @@ int rw_error(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return RedisModule_ReplyWithError(ctx, "An error");
 }
 
-int rw_error_format(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (argc != 3) return RedisModule_WrongArity(ctx);
-
-    return RedisModule_ReplyWithErrorFormat(ctx,
-                                            RedisModule_StringPtrLen(argv[1], NULL),
-                                            RedisModule_StringPtrLen(argv[2], NULL));
-}
-
 int rw_verbatim(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if (argc != 2) return RedisModule_WrongArity(ctx);
 
@@ -204,8 +185,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     if (RedisModule_CreateCommand(ctx,"rw.null",rw_null,"",0,0,0) != REDISMODULE_OK)
         return REDISMODULE_ERR;
     if (RedisModule_CreateCommand(ctx,"rw.error",rw_error,"",0,0,0) != REDISMODULE_OK)
-        return REDISMODULE_ERR;
-    if (RedisModule_CreateCommand(ctx,"rw.error_format",rw_error_format,"",0,0,0) != REDISMODULE_OK)
         return REDISMODULE_ERR;
     if (RedisModule_CreateCommand(ctx,"rw.verbatim",rw_verbatim,"",0,0,0) != REDISMODULE_OK)
         return REDISMODULE_ERR;

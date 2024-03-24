@@ -1,6 +1,6 @@
 {
     "USERS": {
-        "summary": "Lists all ACL users.",
+        "summary": "List the username of all the configured ACL rules",
         "complexity": "O(N). Where N is the number of configured users.",
         "group": "server",
         "since": "6.0.0",
@@ -13,13 +13,6 @@
             "LOADING",
             "STALE",
             "SENTINEL"
-        ],
-        "reply_schema": {
-            "type": "array",
-            "description": "List of existing ACL users",
-            "items": {
-                "type": "string"
-            }
-        }
+        ]
     }
 }

@@ -19,7 +19,6 @@ source ../support/test.tcl
 set ::verbose 0
 set ::valgrind 0
 set ::tls 0
-set ::tls_module 0
 set ::pause_on_error 0
 set ::dont_clean 0
 set ::simulate_error 0
@@ -35,8 +34,6 @@ set ::leaked_fds_file [file normalize "tmp/leaked_fds.txt"]
 set ::pids {} ; # We kill everything at exit
 set ::dirs {} ; # We remove all the temp dirs at exit
 set ::run_matching {} ; # If non empty, only tests matching pattern are run.
-set ::stop_on_failure 0
-set ::loop 0
 
 if {[catch {cd tmp}]} {
     puts "tmp directory not found."
@@ -86,10 +83,6 @@ proc spawn_instance {type base_port count {conf {}} {base_conf_file ""}} {
         }
 
         if {$::tls} {
-            if {$::tls_module} {
-                puts $cfg [format "loadmodule %s/../../../src/redis-tls.so" [pwd]]
-            }
-
             puts $cfg "tls-port $port"
             puts $cfg "tls-replication yes"
             puts $cfg "tls-cluster yes"
@@ -102,18 +95,10 @@ proc spawn_instance {type base_port count {conf {}} {base_conf_file ""}} {
             puts $cfg [format "tls-client-key-file %s/../../tls/client.key" [pwd]]
             puts $cfg [format "tls-dh-params-file %s/../../tls/redis.dh" [pwd]]
             puts $cfg [format "tls-ca-cert-file %s/../../tls/ca.crt" [pwd]]
+            puts $cfg "loglevel debug"
         } else {
             puts $cfg "port $port"
         }
-
-        if {$::log_req_res} {
-            puts $cfg "req-res-logfile stdout.reqres"
-        }
-
-        if {$::force_resp3} {
-            puts $cfg "client-default-resp 3"
-        }
-
         puts $cfg "repl-diskless-sync-delay 0"
         puts $cfg "dir ./$dirname"
         puts $cfg "logfile log.txt"
@@ -284,28 +269,17 @@ proc parse_options {} {
         } elseif {$opt eq {--host}} {
             incr j
             set ::host ${val}
-        } elseif {$opt eq {--tls} || $opt eq {--tls-module}} {
+        } elseif {$opt eq {--tls}} {
             package require tls 1.6
             ::tls::init \
                 -cafile "$::tlsdir/ca.crt" \
                 -certfile "$::tlsdir/client.crt" \
                 -keyfile "$::tlsdir/client.key"
             set ::tls 1
-            if {$opt eq {--tls-module}} {
-                set ::tls_module 1
-            }
         } elseif {$opt eq {--config}} {
             set val2 [lindex $::argv [expr $j+2]]
             dict set ::global_config $val $val2
             incr j 2
-        } elseif {$opt eq {--stop}} {
-            set ::stop_on_failure 1
-        } elseif {$opt eq {--loop}} {
-            set ::loop 1
-        } elseif {$opt eq {--log-req-res}} {
-            set ::log_req_res 1
-        } elseif {$opt eq {--force-resp3}} {
-            set ::force_resp3 1
         } elseif {$opt eq "--help"} {
             puts "--single <pattern>      Only runs tests specified by pattern."
             puts "--dont-clean            Keep log files on exit."
@@ -313,11 +287,8 @@ proc parse_options {} {
             puts "--fail                  Simulate a test failure."
             puts "--valgrind              Run with valgrind."
             puts "--tls                   Run tests in TLS mode."
-            puts "--tls-module            Run tests in TLS mode with Redis module."
             puts "--host <host>           Use hostname instead of 127.0.0.1."
             puts "--config <k> <v>        Extra config argument(s)."
-            puts "--stop                  Blocks once the first test fails."
-            puts "--loop                  Execute the specified set of tests forever."
             puts "--help                  Shows this help."
             exit 0
         } else {
@@ -464,8 +435,6 @@ proc check_leaks instance_types {
 # Execute all the units inside the 'tests' directory.
 proc run_tests {} {
     set tests [lsort [glob ../tests/*]]
-
-while 1 {
     foreach test $tests {
         # Remove leaked_fds file before starting
         if {$::leaked_fds_file != "" && [file exists $::leaked_fds_file]} {
@@ -482,12 +451,6 @@ while 1 {
             puts $::errorInfo
             incr ::failed
             # letting the tests resume, so we'll eventually reach the cleanup and report crashes
-
-            if {$::stop_on_failure} {
-                puts -nonewline "(Test stopped, press enter to resume the tests)"
-                flush stdout
-                gets stdin
-            }
         }
         check_leaks {redis sentinel}
 
@@ -499,9 +462,6 @@ while 1 {
             incr ::failed
         }
     }
-
-    if {$::loop == 0} { break }
-} ;# while 1
 }
 
 # Print a message and exists with 0 / 1 according to zero or more failures.

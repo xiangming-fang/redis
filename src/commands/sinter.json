@@ -1,6 +1,6 @@
 {
     "SINTER": {
-        "summary": "Returns the intersect of multiple sets.",
+        "summary": "Intersect multiple sets",
         "complexity": "O(N*M) worst case where N is the cardinality of the smallest set and M is the number of sets.",
         "group": "set",
         "since": "1.0.0",
@@ -35,14 +35,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "type": "array",
-            "description": "List with the members of the resulting set.",
-            "uniqueItems": true,
-            "items": {
-                "type": "string"
-            }
-        },
         "arguments": [
             {
                 "name": "key",

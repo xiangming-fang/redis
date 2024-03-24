@@ -1,6 +1,6 @@
 {
     "HELP": {
-        "summary": "Returns helpful text about the different subcommands.",
+        "summary": "Show helpful text about the different subcommands",
         "complexity": "O(1)",
         "group": "connection",
         "since": "5.0.0",
@@ -14,13 +14,6 @@
         ],
         "acl_categories": [
             "CONNECTION"
-        ],
-        "reply_schema": {
-            "type": "array",
-            "description": "Helpful text about subcommands.",
-            "items": {
-                "type": "string"
-            }
-        }
+        ]
     }
 }

@@ -1,6 +1,6 @@
 {
     "MSET": {
-        "summary": "Atomically creates or modifies the string values of one or more keys.",
+        "summary": "Set multiple keys to multiple values",
         "complexity": "O(N) where N is the number of keys to set.",
         "group": "string",
         "since": "1.0.1",
@@ -37,12 +37,9 @@
                 }
             }
         ],
-        "reply_schema": {
-            "const": "OK"
-        },
         "arguments": [
             {
-                "name": "data",
+                "name": "key_value",
                 "type": "block",
                 "multiple": true,
                 "arguments": [

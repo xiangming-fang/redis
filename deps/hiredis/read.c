@@ -303,14 +303,11 @@ static int processLineItem(redisReader *r) {
                 d = INFINITY; /* Positive infinite. */
             } else if (len == 4 && strcasecmp(buf,"-inf") == 0) {
                 d = -INFINITY; /* Negative infinite. */
-            } else if ((len == 3 && strcasecmp(buf,"nan") == 0) ||
-                       (len == 4 && strcasecmp(buf, "-nan") == 0)) {
-                d = NAN; /* nan. */
             } else {
                 d = strtod((char*)buf,&eptr);
                 /* RESP3 only allows "inf", "-inf", and finite values, while
-                 * strtod() allows other variations on infinity,
-                 * etc. We explicity handle our two allowed infinite cases and NaN
+                 * strtod() allows other variations on infinity, NaN,
+                 * etc. We explicity handle our two allowed infinite cases
                  * above, so strtod() should only result in finite values. */
                 if (buf[0] == '\0' || eptr != &buf[len] || !isfinite(d)) {
                     __redisReaderSetError(r,REDIS_ERR_PROTOCOL,
@@ -377,7 +374,7 @@ static int processLineItem(redisReader *r) {
             if (r->fn && r->fn->createString)
                 obj = r->fn->createString(cur,p,len);
             else
-                obj = (void*)(uintptr_t)(cur->type);
+                obj = (void*)(size_t)(cur->type);
         }
 
         if (obj == NULL) {
@@ -442,7 +439,7 @@ static int processBulkItem(redisReader *r) {
                 if (r->fn && r->fn->createString)
                     obj = r->fn->createString(cur,s+2,len);
                 else
-                    obj = (void*)(uintptr_t)cur->type;
+                    obj = (void*)(long)cur->type;
                 success = 1;
             }
         }
@@ -539,7 +536,7 @@ static int processAggregateItem(redisReader *r) {
             if (r->fn && r->fn->createArray)
                 obj = r->fn->createArray(cur,elements);
             else
-                obj = (void*)(uintptr_t)cur->type;
+                obj = (void*)(long)cur->type;
 
             if (obj == NULL) {
                 __redisReaderSetErrorOOM(r);

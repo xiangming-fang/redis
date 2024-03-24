@@ -1,6 +1,6 @@
 {
     "MULTI": {
-        "summary": "Starts a transaction.",
+        "summary": "Mark the start of a transaction block",
         "complexity": "O(1)",
         "group": "transactions",
         "since": "1.2.0",
@@ -15,9 +15,6 @@
         ],
         "acl_categories": [
             "TRANSACTION"
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

@@ -1,6 +1,6 @@
 {
     "HDEL": {
-        "summary": "Deletes one or more fields and their values from a hash. Deletes the hash if no fields remain.",
+        "summary": "Delete one or more hash fields",
         "complexity": "O(N) where N is the number of fields to be removed.",
         "group": "hash",
         "since": "2.0.0",
@@ -39,10 +39,6 @@
                 }
             }
         ],
-        "reply_schema": {
-            "type": "integer",
-            "description": "The number of fields that were removed from the hash."
-        },
         "arguments": [
             {
                 "name": "key",

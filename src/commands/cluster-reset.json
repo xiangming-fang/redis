@@ -1,6 +1,6 @@
 {
     "RESET": {
-        "summary": "Resets a node.",
+        "summary": "Reset a Redis Cluster node",
         "complexity": "O(N) where N is the number of known nodes. The command may execute a FLUSHALL as a side effect.",
         "group": "cluster",
         "since": "3.0.0",
@@ -12,9 +12,12 @@
             "STALE",
             "NOSCRIPT"
         ],
+        "command_tips": [
+            "NONDETERMINISTIC_OUTPUT"
+        ],
         "arguments": [
             {
-                "name": "reset-type",
+                "name": "hard_soft",
                 "type": "oneof",
                 "optional": true,
                 "arguments": [
@@ -30,9 +33,6 @@
                     }
                 ]
             }
-        ],
-        "reply_schema": {
-            "const": "OK"
-        }
+        ]
     }
 }

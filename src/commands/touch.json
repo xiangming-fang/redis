@@ -1,6 +1,6 @@
 {
     "TOUCH": {
-        "summary": "Returns the number of existing keys out of those specified after updating the time they were last accessed.",
+        "summary": "Alters the last access time of a key(s). Returns the number of existing keys specified.",
         "complexity": "O(N) where N is the number of keys that will be touched.",
         "group": "generic",
         "since": "3.2.1",
@@ -43,11 +43,6 @@
                 "key_spec_index": 0,
                 "multiple": true
             }
-        ],
-        "reply_schema": {
-            "description": "the number of touched keys",
-            "type": "integer",
-            "minimum": 0
-        }
+        ]
     }
 }

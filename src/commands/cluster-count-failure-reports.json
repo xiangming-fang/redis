@@ -1,6 +1,6 @@
 {
     "COUNT-FAILURE-REPORTS": {
-        "summary": "Returns the number of active failure reports active for a node.",
+        "summary": "Return the number of failure reports active for a given node",
         "complexity": "O(N) where N is the number of failure reports",
         "group": "cluster",
         "since": "3.0.0",
@@ -19,11 +19,6 @@
                 "name": "node-id",
                 "type": "string"
             }
-        ],
-        "reply_schema": {
-            "description": "the number of active failure reports for the node",
-            "type": "integer",
-            "minimum": 0
-        }
+        ]
     }
 }

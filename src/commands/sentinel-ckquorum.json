@@ -1,6 +1,6 @@
 {
     "CKQUORUM": {
-        "summary": "Checks for a Redis Sentinel quorum.",
+        "summary": "Check for a Sentinel quorum",
         "group": "sentinel",
         "since": "2.8.4",
         "arity": 3,
@@ -11,11 +11,6 @@
             "SENTINEL",
             "ONLY_SENTINEL"
         ],
-        "reply_schema": {
-            "type": "string",
-            "description": "Returns OK if the current Sentinel configuration is able to reach the quorum needed to failover a master, and the majority needed to authorize the failover.",
-            "pattern": "OK"
-        },
         "arguments": [
             {
                 "name": "master-name",

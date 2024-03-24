@@ -85,9 +85,8 @@ char *rdb_type_string[] = {
     "zset-v1",
     "hash-hashtable",
     "zset-v2",
-    "module-pre-release",
     "module-value",
-    "",
+    "","",
     "hash-zipmap",
     "list-ziplist",
     "set-intset",
@@ -97,10 +96,7 @@ char *rdb_type_string[] = {
     "stream",
     "hash-listpack",
     "zset-listpack",
-    "quicklist-v2",
-    "stream-v2",
-    "set-listpack",
-    "stream-v3",
+    "quicklist-v2"
 };
 
 /* Show a few stats collected into 'rdbstate' */
@@ -190,7 +186,7 @@ void rdbCheckSetupSignals(void) {
 
 /* Check the specified RDB file. Return 0 if the RDB looks sane, otherwise
  * 1 is returned.
- * The file is specified as a filename in 'rdbfilename' if 'fp' is NULL,
+ * The file is specified as a filename in 'rdbfilename' if 'fp' is not NULL,
  * otherwise the already open file 'fp' is checked. */
 int redis_check_rdb(char *rdbfilename, FILE *fp) {
     uint64_t dbid;
@@ -278,15 +274,6 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
             if ((expires_size = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
                 goto eoferr;
             continue; /* Read type again. */
-        } else if (type == RDB_OPCODE_SLOT_INFO) {
-            uint64_t slot_id, slot_size, expires_slot_size;
-            if ((slot_id = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
-                goto eoferr;
-            if ((slot_size = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
-                goto eoferr;
-            if ((expires_slot_size = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
-                goto eoferr;
-            continue; /* Read type again. */
         } else if (type == RDB_OPCODE_AUX) {
             /* AUX: generic string-string fields. Use to add state to RDB
              * which is backward compatible. Implementations of RDB loading
@@ -325,13 +312,10 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
             robj *o = rdbLoadCheckModuleValue(&rdb,name);
             decrRefCount(o);
             continue; /* Read type again. */
-        } else if (type == RDB_OPCODE_FUNCTION_PRE_GA) {
-            rdbCheckError("Pre-release function format not supported %d",rdbver);
-            goto err;
-        } else if (type == RDB_OPCODE_FUNCTION2) {
+        } else if (type == RDB_OPCODE_FUNCTION || type == RDB_OPCODE_FUNCTION2) {
             sds err = NULL;
             rdbstate.doing = RDB_CHECK_DOING_READ_FUNCTIONS;
-            if (rdbFunctionLoad(&rdb, rdbver, NULL, 0, &err) != C_OK) {
+            if (rdbFunctionLoad(&rdb, rdbver, NULL, type, 0, &err) != C_OK) {
                 rdbCheckError("Failed loading library, %s", err);
                 sdsfree(err);
                 goto err;
@@ -396,6 +380,20 @@ err:
     return 1;
 }
 
+static sds checkRdbVersion(void) {
+    sds version;
+    version = sdscatprintf(sdsempty(), "%s", REDIS_VERSION);
+
+    /* Add git commit and working tree status when available */
+    if (strtoll(redisGitSHA1(),NULL,16)) {
+        version = sdscatprintf(version, " (git:%s", redisGitSHA1());
+        if (strtoll(redisGitDirty(),NULL,10))
+            version = sdscatprintf(version, "-dirty");
+        version = sdscat(version, ")");
+    }
+    return version;
+}
+
 /* RDB check main: called form server.c when Redis is executed with the
  * redis-check-rdb alias, on during RDB loading errors.
  *
@@ -415,7 +413,7 @@ int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
         fprintf(stderr, "Usage: %s <rdb-file-name>\n", argv[0]);
         exit(1);
     } else if (!strcmp(argv[1],"-v") || !strcmp(argv[1], "--version")) {
-        sds version = getVersion();
+        sds version = checkRdbVersion();
         printf("redis-check-rdb %s\n", version);
         sdsfree(version);
         exit(0);

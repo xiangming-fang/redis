@@ -17,7 +17,6 @@ proc main {} {
         "appendonly yes"
         "enable-protected-configs yes"
         "enable-debug-command yes"
-        "save ''"
     }
     run_tests
     cleanup
